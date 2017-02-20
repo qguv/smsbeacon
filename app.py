@@ -93,10 +93,10 @@ def receive():
             "text": request.values.get('Text'),
     }
 
+    pprint(msg)
+
     if msg["src"] is None or msg["dst"] is None or msg["text"] is None:
         return make_response("something's missing", 403)
-
-    pprint(msg)
 
     if msg["src"] not in settings.vetoers:
         msgid = enqueue(msg)
