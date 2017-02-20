@@ -85,8 +85,8 @@ def queue_runner():
 def test():
     return "OK"
 
-@app.route('/sms/rx/', methods=['GET', 'POST'])
-def receive():
+@app.route('/receive_sms/', methods=['GET', 'POST'])
+def receive_sms():
     msg = {
             "src": request.values.get('From'),
             "dst": request.values.get('To'),
