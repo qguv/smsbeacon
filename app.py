@@ -78,6 +78,7 @@ def queue_runner():
 
                 msg = queue[msgid]
                 if msg["delay"] <= 1:
+                    print("blasting queued message")
                     blast(msg, queue["subscribers"])
                     to_delete.append(msgid)
                 else:
@@ -107,6 +108,7 @@ def receive_sms():
     with open_queue() as queue:
 
         if msg["src"] in queue["banned"] or not msg["text"]:
+            print("ignoring banned user")
             return responses.ignore()
 
         if msg["text"].lower() in ("stop", "unsubscribe") and msg["src"] in queue["subscribers"]:
@@ -114,6 +116,7 @@ def receive_sms():
             try:
                 subs.remove(msg["src"])
                 queue["subscribers"] = subs
+                print("unsubscribed")
             except ValueError:
                 return responses.ignore()
             return responses.unsubscribed(msg["src"], msg["dst"])
@@ -122,11 +125,13 @@ def receive_sms():
             subs = queue["subscribers"]
             subs.append(msg["src"])
             queue["subscribers"] = subs
+            print("subscribed")
             return responses.subscribed(msg["src"], msg["dst"])
 
         if msg["src"] not in settings.vetoers:
             msgid = enqueue(msg)
             inform(msgid, msg)
+            print("message queued")
             return responses.queued(msg["src"], msg["dst"])
 
         cmd = msg["text"].strip('"').split()
@@ -144,6 +149,7 @@ def receive_sms():
                         queue["subscribers"] = subs
                     except ValueError:
                         return responses.ignore()
+                    print("message vetoed and user banned!")
                     return responses.banned(cmd[1], msg["src"], msg["dst"])
                 else:
                     return responses.nomsg(cmd[1], msg["src"], msg["dst"])
@@ -151,6 +157,7 @@ def receive_sms():
             # veto for msgid
             if cmd[0].lower() == "veto":
                 if dequeue(cmd[1]):
+                    print("message vetoed!")
                     return responses.vetoed(cmd[1], msg["src"], msg["dst"])
                 else:
                     return responses.nomsg(cmd[1], msg["src"], msg["dst"])
@@ -158,6 +165,7 @@ def receive_sms():
             # queue override for msgid
             if cmd[0].lower() == "ok":
                 if send_immediately(cmd[1]):
+                    print("message explicitly approved")
                     return responses.approved(cmd[1], msg["src"], msg["dst"])
                 else:
                     return responses.nomsg(cmd[1], msg["src"], msg["dst"])
@@ -175,6 +183,7 @@ def receive_sms():
             return responses.nomsgid(msg["src"], msg["dst"])
 
         # direct blast message
+        print("directly blasting message from vetoer")
         return responses.blast(msg["text"], queue["subscribers"], msg["src"], msg["dst"])
 
 if __name__ == "__main__":
