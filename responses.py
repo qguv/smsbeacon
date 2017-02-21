@@ -45,7 +45,7 @@ def subscribers(to, n):
     return xmlgen(to, "{}: {} subscribers".format(settings.appname, n))
 
 def vetoers(to):
-    return xmlgen(to, "{}: {} vetoers: {}".format(settings.appname, len(settings.vetoers), ", ".join(sorted(settings.vetoers.keys()))))
+    return xmlgen(to, "{}: {} vetoers: {}".format(settings.appname, len(settings.vetoers), ", ".join(sorted(settings.vetoers.values()))))
 
 def pong(to):
     return xmlgen(to, "{}: pong".format(settings.appname))
