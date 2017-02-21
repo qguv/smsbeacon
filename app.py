@@ -14,7 +14,7 @@ import responses
 app = Flask(__name__)
 p = plivo.RestAPI(settings.plivo_id, settings.plivo_token)
 
-open_queue = lambda: shelve.open(settings.appname)
+open_queue = lambda: shelve.open("{}.shelf".format(settings.appname))
 with open_queue() as queue:
     if "next_id" not in queue:
         queue["next_id"] = 0
