@@ -36,7 +36,7 @@ def blast(msg, subscribers):
 def inform(msgid, msg):
     p.send_message({"src": settings.plivo_number,
                     "dst": "<".join(settings.vetoers.keys()),
-                    "text": '{}: ok/veto/ban {}? "{}"'.format(settings.appname, msgid, msgid, msg["text"])})
+                    "text": '{}: ok/veto/ban {}? "{}"'.format(settings.appname, msgid, msg["text"])})
 
 def enqueue(msg):
     msg["delay"] = settings.veto_delay
