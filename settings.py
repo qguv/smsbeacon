@@ -10,6 +10,6 @@ vetoers = {
     "18885552468": "Quint",
 }
 
-subscribers = [
+initial_subscribers = [
     "18005550123",
 ]

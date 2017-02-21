@@ -34,6 +34,8 @@ def nomsgid(to):
     return xmlgen(to,
             "{}: you forgot a message id: e.g. veto 28".format(settings.appname))
 
-def blast(text):
-    return xmlgen("<".join(settings.subscribers),
+def blast(text, subscribers, by):
+    dest = subscribers + list(settings.vetoers.keys())
+    dest.remove(by)
+    return xmlgen("<".join(subscribers),
             "{}: {}".format(settings.appname, text))

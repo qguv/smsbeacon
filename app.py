@@ -18,10 +18,12 @@ open_queue = lambda: shelve.open(settings.appname)
 with open_queue() as queue:
     if "next_id" not in queue:
         queue["next_id"] = 0
+    if "subscribers" not in queue:
+        queue["subscribers"] = settings.initial_subscribers
 
-def blast(msg):
+def blast(msg, subscribers):
     p.send_message({"src": settings.plivo_number,
-                    "dst": "<".join(settings.subscribers),
+                    "dst": "<".join(subscribers),
                     "text": "{}: {}".format(settings.appname, msg["text"])})
 
 def inform(msgid, msg):
@@ -52,7 +54,7 @@ def send_immediately(msgid: str) -> bool:
     with open_queue() as queue:
         try:
             msg = queue[msgid]
-            blast(msg)
+            blast(msg, queue["subscribers"])
             del queue[msgid]
             return True
         except KeyError:
@@ -67,12 +69,12 @@ def queue_runner():
         with open_queue() as queue:
 
             for msgid in queue:
-                if msgid == "next_id":
+                if msgid in ("next_id", "subscribers"):
                     continue
 
                 msg = queue[msgid]
                 if msg["delay"] <= 1:
-                    blast(msg)
+                    blast(msg, queue["subscribers"])
                     to_delete.append(msgid)
                 else:
                     msg["delay"] -= 1
@@ -98,33 +100,46 @@ def receive_sms():
     if msg["src"] is None or msg["dst"] is None or msg["text"] is None:
         return make_response("something's missing", 403)
 
-    if msg["src"] not in settings.vetoers:
-        msgid = enqueue(msg)
-        inform(msgid, msg)
-        return responses.queued(msg["src"])
+    with open_queue() as queue:
+        if msg["text"].lower() == "subscribe" and msg["src"] not in queue["subscribers"] and msg["src"] not in settings.vetoers:
+            subs = queue["subscribers"]
+            subs.append(msg["src"])
+            queue["subscribers"] = subs
+            return responses.subscribed(msg["src"])
 
-    cmd = msg["text"].strip('"').split()
-    try:
+        if msg["text"].lower() == "stop" and msg["src"] in queue["subscribers"]:
+            subs = queue["subscribers"]
+            subs.remove(msg["src"])
+            queue["subscribers"] = subs
+            return responses.unsubscribed(msg["src"])
 
-        # veto for msgid
-        if cmd[0] == "veto":
-            if dequeue(cmd[1]):
-                return responses.vetoed(cmd[1], msg["src"])
-            else:
-                return responses.nomsg(cmd[1], msg["src"])
+        if msg["src"] not in settings.vetoers:
+            msgid = enqueue(msg)
+            inform(msgid, msg)
+            return responses.queued(msg["src"])
 
-        # queue override for msgid
-        if cmd[0] == "ok":
-            if send_immediately(cmd[1]):
-                return responses.approved(cmd[1], msg["src"])
-            else:
-                return responses.nomsg(cmd[1], msg["src"])
+        cmd = msg["text"].strip('"').split()
+        try:
 
-    except IndexError:
-        return responses.nomsgid(msg["src"])
+            # veto for msgid
+            if cmd[0].lower() == "veto":
+                if dequeue(cmd[1]):
+                    return responses.vetoed(cmd[1], msg["src"])
+                else:
+                    return responses.nomsg(cmd[1], msg["src"])
 
-    # direct blast message
-    return responses.blast(msg["text"])
+            # queue override for msgid
+            if cmd[0].lower() == "ok":
+                if send_immediately(cmd[1]):
+                    return responses.approved(cmd[1], msg["src"])
+                else:
+                    return responses.nomsg(cmd[1], msg["src"])
+
+        except IndexError:
+            return responses.nomsgid(msg["src"])
+
+        # direct blast message
+        return responses.blast(msg["text"], queue["subscribers"], msg["src"])
 
 if __name__ == "__main__":
     t = Thread(target=queue_runner)
