@@ -111,7 +111,9 @@ def receive_sms():
             print("ignoring banned user")
             return responses.ignore()
 
-        if msg["text"].lower() in ("stop", "unsubscribe") and msg["src"] in queue["subscribers"]:
+        if msg["text"].lower() in ("stop", "unsubscribe"):
+            if msg["src"] not in queue["subscribers"]:
+                return responses.ignore()
             subs = queue["subscribers"]
             try:
                 subs.remove(msg["src"])
@@ -121,7 +123,9 @@ def receive_sms():
                 return responses.ignore()
             return responses.unsubscribed(msg["src"], msg["dst"])
 
-        if msg["text"].lower() == "subscribe" and msg["src"] not in queue["subscribers"] and msg["src"] not in settings.vetoers:
+        if msg["text"].lower() == "subscribe":
+            if msg["src"] in queue["subscribers"] or msg["src"] in settings.vetoers:
+                return responses.ignore()
             subs = queue["subscribers"]
             subs.append(msg["src"])
             queue["subscribers"] = subs
