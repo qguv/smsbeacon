@@ -134,6 +134,12 @@ def receive_sms():
                 else:
                     return responses.nomsg(cmd[1], msg["src"])
 
+            if cmd[0].lower() == "subscribers":
+                return responses.subscribers(msg["src"], len(queue["subscribers"]))
+
+            if cmd[0].lower() == "vetoers":
+                return responses.vetoers(msg["src"])
+
         except IndexError:
             return responses.nomsgid(msg["src"])
 

@@ -7,8 +7,7 @@ def xmlgen(to, text):
     return Response(m.format(to, settings.plivo_number, escape(text)), mimetype="text/xml")
 
 def queued(to):
-    return xmlgen(to,
-            "{}: report received".format(settings.appname))
+    return xmlgen(to, "{}: report received".format(settings.appname))
 
 def vetoed(msgid, by):
     return xmlgen("<".join(settings.vetoers.keys()),
@@ -23,8 +22,7 @@ def subscribed(to):
             "{}: you've subscribed. Send STOP to opt-out".format(settings.appname))
 
 def unsubscribed(to):
-    return xmlgen(to,
-            "{}: you've unsubscribed".format(settings.appname))
+    return xmlgen(to, "{}: you've unsubscribed".format(settings.appname))
 
 def nomsg(msgid, to):
     return xmlgen(to,
@@ -37,5 +35,10 @@ def nomsgid(to):
 def blast(text, subscribers, by):
     dest = subscribers + list(settings.vetoers.keys())
     dest.remove(by)
-    return xmlgen("<".join(subscribers),
-            "{}: {}".format(settings.appname, text))
+    return xmlgen("<".join(subscribers), "{}: {}".format(settings.appname, text))
+
+def subscribers(to, n):
+    return xmlgen(to, "{}: {} subscribers".format(settings.appname, n))
+
+def vetoers(to):
+    return xmlgen(to, "{}: {} vetoers: {}".format(settings.appname, len(settings.vetoers), ", ".join(sorted(settings.vetoers.keys()))))
