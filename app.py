@@ -107,7 +107,7 @@ def receive_sms():
     with open_queue() as queue:
 
         if msg["src"] in queue["banned"]:
-            return
+            return responses.ignore()
 
         if msg["text"].lower() == "stop" and msg["src"] in queue["subscribers"]:
             subs = queue["subscribers"]
@@ -115,7 +115,7 @@ def receive_sms():
                 subs.remove(msg["src"])
                 queue["subscribers"] = subs
             except ValueError:
-                return
+                return responses.ignore()
             return responses.unsubscribed(msg["src"])
 
         if msg["text"].lower() == "subscribe" and msg["src"] not in queue["subscribers"] and msg["src"] not in settings.vetoers:
@@ -143,7 +143,7 @@ def receive_sms():
                         subs.remove(to_ban)
                         queue["subscribers"] = subs
                     except ValueError:
-                        return
+                        return responses.ignore()
                     return responses.banned(cmd[1], msg["src"])
                 else:
                     return responses.nomsg(cmd[1], msg["src"])

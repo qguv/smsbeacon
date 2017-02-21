@@ -1,6 +1,9 @@
 from xml.sax.saxutils import escape
-from flask import Response
+from flask import Response, make_response
 import settings
+
+def ignore():
+    return make_response("um alright", 201)
 
 def xmlgen(to, text):
     m = '<Response><Message dst="{}" src="{}">{}</Message></Response>'
