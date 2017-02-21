@@ -29,12 +29,12 @@ def blast(msg, subscribers):
         dest.remove(msg["src"])
     except ValueError:
         pass
-    p.send_message({"src": settings.plivo_number,
+    p.send_message({"src": msg["dst"],
                     "dst": "<".join(subscribers),
                     "text": "{}: {}".format(settings.appname, msg["text"])})
 
 def inform(msgid, msg):
-    p.send_message({"src": settings.plivo_number,
+    p.send_message({"src": msg["dst"],
                     "dst": "<".join(settings.vetoers.keys()),
                     "text": '{}: ok/veto/ban {}? "{}"'.format(settings.appname, msgid, msg["text"])})
 
@@ -106,7 +106,7 @@ def receive_sms():
 
     with open_queue() as queue:
 
-        if msg["src"] in queue["banned"]:
+        if msg["src"] in queue["banned"] or not msg["text"]:
             return responses.ignore()
 
         if msg["text"].lower() == "stop" and msg["src"] in queue["subscribers"]:
@@ -116,18 +116,18 @@ def receive_sms():
                 queue["subscribers"] = subs
             except ValueError:
                 return responses.ignore()
-            return responses.unsubscribed(msg["src"])
+            return responses.unsubscribed(msg["src"], msg["dst"])
 
         if msg["text"].lower() == "subscribe" and msg["src"] not in queue["subscribers"] and msg["src"] not in settings.vetoers:
             subs = queue["subscribers"]
             subs.append(msg["src"])
             queue["subscribers"] = subs
-            return responses.subscribed(msg["src"])
+            return responses.subscribed(msg["src"], msg["dst"])
 
         if msg["src"] not in settings.vetoers:
             msgid = enqueue(msg)
             inform(msgid, msg)
-            return responses.queued(msg["src"])
+            return responses.queued(msg["src"], msg["dst"])
 
         cmd = msg["text"].strip('"').split()
         try:
@@ -144,38 +144,38 @@ def receive_sms():
                         queue["subscribers"] = subs
                     except ValueError:
                         return responses.ignore()
-                    return responses.banned(cmd[1], msg["src"])
+                    return responses.banned(cmd[1], msg["src"], msg["dst"])
                 else:
-                    return responses.nomsg(cmd[1], msg["src"])
+                    return responses.nomsg(cmd[1], msg["src"], msg["dst"])
 
             # veto for msgid
             if cmd[0].lower() == "veto":
                 if dequeue(cmd[1]):
-                    return responses.vetoed(cmd[1], msg["src"])
+                    return responses.vetoed(cmd[1], msg["src"], msg["dst"])
                 else:
-                    return responses.nomsg(cmd[1], msg["src"])
+                    return responses.nomsg(cmd[1], msg["src"], msg["dst"])
 
             # queue override for msgid
             if cmd[0].lower() == "ok":
                 if send_immediately(cmd[1]):
-                    return responses.approved(cmd[1], msg["src"])
+                    return responses.approved(cmd[1], msg["src"], msg["dst"])
                 else:
-                    return responses.nomsg(cmd[1], msg["src"])
+                    return responses.nomsg(cmd[1], msg["src"], msg["dst"])
 
             if msg["text"].lower() == "subscribers":
-                return responses.subscribers(msg["src"], len(queue["subscribers"]))
+                return responses.subscribers(msg["src"], len(queue["subscribers"]), msg["dst"])
 
             if msg["text"].lower() == "vetoers":
-                return responses.vetoers(msg["src"])
+                return responses.vetoers(msg["src"], msg["dst"])
 
             if msg["text"].lower() == "ping":
-                return responses.pong(msg["src"])
+                return responses.pong(msg["src"], msg["dst"])
 
         except IndexError:
-            return responses.nomsgid(msg["src"])
+            return responses.nomsgid(msg["src"], msg["dst"])
 
         # direct blast message
-        return responses.blast(msg["text"], queue["subscribers"], msg["src"])
+        return responses.blast(msg["text"], queue["subscribers"], msg["src"], msg["dst"])
 
 if __name__ == "__main__":
     t = Thread(target=queue_runner)
