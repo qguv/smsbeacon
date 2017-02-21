@@ -31,10 +31,7 @@ def blast(msg, subscribers):
 def inform(msgid, msg):
     p.send_message({"src": settings.plivo_number,
                     "dst": "<".join(settings.vetoers.keys()),
-                    "text": '{}: new report follows, reply "ok {}" to confirm it or "veto {}" to reject it'.format(settings.appname, msgid, msgid)})
-    p.send_message({"src": settings.plivo_number,
-                    "dst": "<".join(settings.vetoers.keys()),
-                    "text": "{}: ({}) {}".format(settings.appname, msgid, msg["text"])})
+                    "text": '{}: ok {} or veto {}? "{}"'.format(settings.appname, msgid, msgid, msg["text"])})
 
 def enqueue(msg):
     msg["delay"] = settings.veto_delay
