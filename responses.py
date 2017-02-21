@@ -29,7 +29,7 @@ def approved(msgid, by, number):
 
 def subscribed(to, number):
     return xmlgen(to,
-            "{}: you've subscribed. Send STOP to opt-out".format(settings.appname),
+            "{}: you've subscribed, send unsubscribe to opt-out".format(settings.appname),
             number)
 
 def unsubscribed(to, number):

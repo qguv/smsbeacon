@@ -96,7 +96,7 @@ def receive_sms():
     msg = {
             "src": request.values.get('From'),
             "dst": request.values.get('To'),
-            "text": request.values.get('Text'),
+            "text": request.values.get('Text').strip(),
     }
 
     pprint(msg)
@@ -109,7 +109,7 @@ def receive_sms():
         if msg["src"] in queue["banned"] or not msg["text"]:
             return responses.ignore()
 
-        if msg["text"].lower() == "stop" and msg["src"] in queue["subscribers"]:
+        if msg["text"].lower() in ("stop", "unsubscribe") and msg["src"] in queue["subscribers"]:
             subs = queue["subscribers"]
             try:
                 subs.remove(msg["src"])
