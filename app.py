@@ -20,10 +20,15 @@ with open_queue() as queue:
         queue["next_id"] = 0
     if "subscribers" not in queue:
         queue["subscribers"] = settings.initial_subscribers
+    if "banned" not in queue:
+        queue["banned"] = []
 
 def blast(msg, subscribers):
     dest = subscribers[:]
-    dest.remove(msg["src"])
+    try:
+        dest.remove(msg["src"])
+    except ValueError:
+        continue
     p.send_message({"src": settings.plivo_number,
                     "dst": "<".join(subscribers),
                     "text": "{}: {}".format(settings.appname, msg["text"])})
@@ -68,7 +73,7 @@ def queue_runner():
         with open_queue() as queue:
 
             for msgid in queue:
-                if msgid in ("next_id", "subscribers"):
+                if msgid in ("next_id", "subscribers", "banned"):
                     continue
 
                 msg = queue[msgid]
@@ -100,17 +105,24 @@ def receive_sms():
         return make_response("something's missing", 403)
 
     with open_queue() as queue:
+
+        if msg["src"] in queue["banned"]:
+            return
+
+        if msg["text"].lower() == "stop" and msg["src"] in queue["subscribers"]:
+            subs = queue["subscribers"]
+            try:
+                subs.remove(msg["src"])
+                queue["subscribers"] = subs
+            except ValueError:
+                return
+            return responses.unsubscribed(msg["src"])
+
         if msg["text"].lower() == "subscribe" and msg["src"] not in queue["subscribers"] and msg["src"] not in settings.vetoers:
             subs = queue["subscribers"]
             subs.append(msg["src"])
             queue["subscribers"] = subs
             return responses.subscribed(msg["src"])
-
-        if msg["text"].lower() == "stop" and msg["src"] in queue["subscribers"]:
-            subs = queue["subscribers"]
-            subs.remove(msg["src"])
-            queue["subscribers"] = subs
-            return responses.unsubscribed(msg["src"])
 
         if msg["src"] not in settings.vetoers:
             msgid = enqueue(msg)
@@ -119,6 +131,22 @@ def receive_sms():
 
         cmd = msg["text"].strip('"').split()
         try:
+
+            if cmd[0].lower() == "ban":
+                to_ban = queue[cmd[1]]["src"]
+                if dequeue(cmd[1]):
+                    banned = queue["banned"]
+                    banned.append(to_ban)
+                    queue["banned"] = banned
+                    subs = queue["subscribers"]
+                    try:
+                        subs.remove(to_ban)
+                        queue["subscribers"] = subs
+                    except ValueError:
+                        return
+                    return responses.banned(cmd[1], msg["src"])
+                else:
+                    return responses.nomsg(cmd[1], msg["src"])
 
             # veto for msgid
             if cmd[0].lower() == "veto":
@@ -134,11 +162,14 @@ def receive_sms():
                 else:
                     return responses.nomsg(cmd[1], msg["src"])
 
-            if cmd[0].lower() == "subscribers":
+            if msg["text"].lower() == "subscribers":
                 return responses.subscribers(msg["src"], len(queue["subscribers"]))
 
-            if cmd[0].lower() == "vetoers":
+            if msg["text"].lower() == "vetoers":
                 return responses.vetoers(msg["src"])
+
+            if msg["text"].lower() == "ping":
+                return responses.pong(msg["src"])
 
         except IndexError:
             return responses.nomsgid(msg["src"])

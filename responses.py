@@ -13,6 +13,10 @@ def vetoed(msgid, by):
     return xmlgen("<".join(settings.vetoers.keys()),
             "{}: message {} vetoed by {}".format(settings.appname, msgid, settings.vetoers[by]))
 
+def banned(msgid, by):
+    return xmlgen("<".join(settings.vetoers.keys()),
+            "{}: message {} vetoed and its sender banned by {}".format(settings.appname, msgid, settings.vetoers[by]))
+
 def approved(msgid, by):
     return xmlgen("<".join(settings.vetoers.keys()),
             "{}: message {} approved by {}".format(settings.appname, msgid, settings.vetoers[by]))
@@ -42,3 +46,6 @@ def subscribers(to, n):
 
 def vetoers(to):
     return xmlgen(to, "{}: {} vetoers: {}".format(settings.appname, len(settings.vetoers), ", ".join(sorted(settings.vetoers.keys()))))
+
+def pong(to):
+    return xmlgen(to, "{}: pong".format(settings.appname))
