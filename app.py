@@ -28,7 +28,7 @@ def blast(msg, subscribers):
     try:
         dest.remove(msg["src"])
     except ValueError:
-        continue
+        pass
     p.send_message({"src": settings.plivo_number,
                     "dst": "<".join(subscribers),
                     "text": "{}: {}".format(settings.appname, msg["text"])})
