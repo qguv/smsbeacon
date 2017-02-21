@@ -107,8 +107,12 @@ def receive_sms():
 
     with open_queue() as queue:
 
-        if msg["src"] in queue["banned"] or not msg["text"]:
+        if msg["src"] in queue["banned"]:
             print("ignoring banned user")
+            return responses.ignore()
+
+        if not msg["text"]:
+            print("ignoring empty text")
             return responses.ignore()
 
         if msg["text"].lower() in ("stop", "unsubscribe"):
