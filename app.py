@@ -22,6 +22,8 @@ with open_queue() as queue:
         queue["subscribers"] = settings.initial_subscribers
 
 def blast(msg, subscribers):
+    dest = subscribers[:]
+    dest.remove(msg["src"])
     p.send_message({"src": settings.plivo_number,
                     "dst": "<".join(subscribers),
                     "text": "{}: {}".format(settings.appname, msg["text"])})
