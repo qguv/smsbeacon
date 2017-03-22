@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from flask import Flask, request, make_response
+from flask import Flask, request, make_response, g
 import plivo
 
 from time import sleep
@@ -14,14 +14,17 @@ import responses
 app = Flask(__name__)
 p = plivo.RestAPI(settings.plivo_id, settings.plivo_token)
 
-open_queue = lambda: shelve.open("{}.shelf".format(settings.appname))
-with open_queue() as queue:
-    if "next_id" not in queue:
-        queue["next_id"] = 0
-    if "subscribers" not in queue:
-        queue["subscribers"] = settings.initial_subscribers
-    if "banned" not in queue:
-        queue["banned"] = []
+connect_db = lambda: shelve.open("{}.shelf".format(settings.appname))
+
+def get_db():
+    if not hasattr(g, 'db'):
+        g.db = connect_db()
+    return g.db
+
+@app.teardown_appcontext
+def close_db():
+    if hasattr(g, 'db'):
+        g.db.close()
 
 def blast(msg, subscribers):
     dest = subscribers[:]
@@ -40,53 +43,60 @@ def inform(msgid, msg):
 
 def enqueue(msg):
     msg["delay"] = settings.veto_delay
-    with open_queue() as queue:
-        msgid = queue["next_id"]
-        queue[str(msgid)] = msg
-        queue["next_id"] = msgid + 1
+    queue = get_db()
+    msgid = queue["next_id"]
+    queue[str(msgid)] = msg
+    queue["next_id"] = msgid + 1
     return msgid
 
 def dequeue(msgid: str) -> bool:
-    with open_queue() as queue:
-        try:
-            del queue[msgid]
-            return True
-        except KeyError:
-            return False
+    queue = get_db()
+    try:
+        del queue[msgid]
+        return True
+    except KeyError:
+        return False
 
 def send_immediately(msgid: str) -> bool:
-    with open_queue() as queue:
-        try:
-            msg = queue[msgid]
-            blast(msg, queue["subscribers"])
-            del queue[msgid]
-            return True
-        except KeyError:
-            return False
+    queue = get_db()
+    try:
+        msg = queue[msgid]
+        blast(msg, queue["subscribers"])
+        del queue[msgid]
+        return True
+    except KeyError:
+        return False
 
 def queue_runner():
+
+    # not connected to an application context, so we need to manage our own
+    # reference to queue
+    queue = connect_db()
+
     while True:
         sleep(settings.queue_interval)
 
         # beware funky mutate semantics; queue can't mutate in-place!
         to_delete = []
-        with open_queue() as queue:
 
-            for msgid in queue:
-                if msgid in ("next_id", "subscribers", "banned"):
-                    continue
+        for msgid in queue:
+            if msgid in ("next_id", "subscribers", "banned"):
+                continue
 
-                msg = queue[msgid]
-                if msg["delay"] <= 1:
-                    print("blasting queued message")
-                    blast(msg, queue["subscribers"])
-                    to_delete.append(msgid)
-                else:
-                    msg["delay"] -= 1
-                    queue[msgid] = msg
+            msg = queue[msgid]
+            if msg["delay"] <= 1:
+                print("blasting queued message")
+                blast(msg, queue["subscribers"])
+                to_delete.append(msgid)
+            else:
+                msg["delay"] -= 1
+                queue[msgid] = msg
 
-            for msgid in to_delete:
-                del queue[msgid]
+        for msgid in to_delete:
+            del queue[msgid]
+
+        # manually sync, since the queue will never be 'properly' closed
+        queue.sync()
 
 @app.route('/test/', methods=['GET'])
 def test():
@@ -105,7 +115,7 @@ def receive_sms():
     if msg["src"] is None or msg["dst"] is None or msg["text"] is None:
         return make_response("something's missing", 403)
 
-    with open_queue() as queue:
+    with connect_db() as queue:
 
         if msg["src"] in queue["banned"]:
             print("ignoring banned user")
@@ -195,6 +205,22 @@ def receive_sms():
         return responses.blast(msg["text"], queue["subscribers"], msg["src"], msg["dst"])
 
 if __name__ == "__main__":
+
+    # not connected to an application context, so we need to manage our own
+    # reference to queue
+    queue = connect_db()
+
+    # initialize database if blank
+    if "next_id" not in queue:
+        queue["next_id"] = 0
+    if "subscribers" not in queue:
+        queue["subscribers"] = settings.initial_subscribers
+    if "banned" not in queue:
+        queue["banned"] = []
+
+    # not in an app context, so manual close is necessary
+    queue.close()
+
     t = Thread(target=queue_runner)
     t.start()
     app.run(host='0.0.0.0', port=80)
