@@ -7,11 +7,11 @@ try:
     if not host:
         host = "localhost"
 
-    port = input("Which port is the app listening on? [enter for 8888] ")
+    port = input("Which port is the app listening on? [enter for 80] ")
     try:
         port = int(port)
     except ValueError:
-        port = 8888
+        port = 80
 
     dst  = input("To:   ") or "11111111111"
 
