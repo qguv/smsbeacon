@@ -3,7 +3,7 @@
 from flask import Flask, request, make_response, g
 import plivo
 
-from enum import Enum, auto
+from enum import Enum
 from time import sleep
 from threading import Thread
 from pprint import pprint
@@ -179,10 +179,10 @@ def ban(number):
     print("\nBanned {}.".format(number))
 
 class UserType(Enum):
-    UNSUBSCRIBED = auto()
-    SUBSCRIBED = auto()
-    BANNED = auto()
-    VETOER = auto()
+    BANNED = -1
+    UNSUBSCRIBED = 0
+    SUBSCRIBED = 1
+    VETOER = 1337
 
     @classmethod
     def from_number(cls, number, subscribers, banned, vetoers):
