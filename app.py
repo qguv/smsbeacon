@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from flask import Flask, request, make_response, g
-import plivo as plivo
+import plivo
 
 from enum import Enum, auto
 from time import sleep
@@ -52,6 +52,9 @@ def get_subscribers() -> [str]:
 
 def get_banned() -> [str]:
     return [ x["number"] for x in get_db().execute("select number from banned").fetchall() ]
+
+def get_queue() -> [int]:
+    return [ x["id"] for x in get_db().execute("select id from queue").fetchall() ]
 
 def print_msg(msg):
     print("Reported by: {}\nUsing number: {}\nMessage: {}".format(msg["src"], msg["dst"], msg["text"]))
@@ -262,6 +265,9 @@ def receive_sms():
 
         if msg["text"].lower() == "vetoers":
             return responses.vetoers(msg["src"], msg["dst"])
+
+        if msg["text"].lower() == "queue":
+            return responses.queue_status(msg["src"], get_queue(), msg["dst"])
 
         if msg["text"].lower() == "banned":
             return responses.banned(msg["src"], len(get_banned()), msg["dst"])

@@ -71,6 +71,9 @@ def subscribers(to, n, number):
 def banned(to, n, number):
     return xmlgen(to, "{}: {} banned".format(settings.appname, n), number)
 
+def queue_status(to, queue, number):
+    return xmlgen(to, "{}: {} messages queued{}{}".format(settings.appname, len(queue), ": " if queue else "", ", ".join(map(str, queue))), number)
+
 def vetoers(to, number):
     return xmlgen(to,
             "{}: {} vetoers: {}".format(
