@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
 
 from flask import Flask, request, make_response, g
-import plivo
+import plivo as plivo
 
+from enum import Enum, auto
 from time import sleep
 from threading import Thread
 from pprint import pprint
-import shelve
+import sqlite3
+import os
 
 import settings
 import responses
+import commands
 
 app = Flask(__name__)
 p = plivo.RestAPI(settings.plivo_id, settings.plivo_token)
 
-connect_db = lambda: shelve.open("{}.shelf".format(settings.appname))
+def connect_db():
+    rv = sqlite3.connect(os.path.join(app.root_path, settings.db_filename))
+    rv.row_factory = sqlite3.Row
+    return rv
 
 def get_db():
     if not hasattr(g, 'db'):
@@ -22,81 +28,169 @@ def get_db():
     return g.db
 
 @app.teardown_appcontext
-def close_db():
+def close_db(error):
     if hasattr(g, 'db'):
         g.db.close()
 
-def blast(msg, subscribers):
-    dest = subscribers[:]
+def init_db():
+    db = get_db()
+    with app.open_resource('schema.sql', mode='r') as f:
+        db.cursor().executescript(f.read())
+    for number in settings.initial_subscribers:
+        db.execute("insert into subscribers (number) values (?)", [number])
+    for number in settings.initial_banned:
+        db.execute("insert into banned (number) values (?)", [number])
+    db.commit()
+
+@app.cli.command('initdb')
+def initdb_command():
+    init_db()
+    print('Initialized the database.')
+
+def get_subscribers() -> [str]:
+    return [ x["number"] for x in get_db().execute("select number from subscribers").fetchall() ]
+
+def get_banned() -> [str]:
+    return [ x["number"] for x in get_db().execute("select number from banned").fetchall() ]
+
+def print_msg(msg):
+    print("Reported by: {}\nUsing number: {}\nMessage: {}".format(msg["src"], msg["dst"], msg["text"]))
+
+def blast(msg, from_vetoer=False):
+    dest = get_subscribers()
+
+    # if from a vetoer, treat other vetoers like subscribers
+    if from_vetoer:
+        dest.extend(settings.vetoers.keys())
+
     try:
         dest.remove(msg["src"])
     except ValueError:
         pass
+
+    if from_vetoer:
+        print("\nBlasting report to subscribers and vetoers and informing the vetoer who submitted it!")
+    else:
+        print("\nBlasting report to subscribers, and informing reporter and vetoers!")
+    print_msg(msg)
+
+    # send the report to subscribers
     p.send_message({"src": msg["dst"],
-                    "dst": "<".join(subscribers),
+                    "dst": "<".join(dest),
                     "text": "{}: {}".format(settings.appname, msg["text"])})
 
-def inform(msgid, msg):
+    # notify vetoers and request veto/ok/ban (if not from a vetoer)
+    if not from_vetoer:
+        p.send_message({"src": msg["dst"],
+                        "dst": "<".join(settings.vetoers.keys()),
+                        "text": "{}: message from {} sent to subscribers".format(settings.appname, msg["src"])})
+
+    # notify the reporter that we've sent the report
+    # don't do this for vetoers; we send that in the HTTP Response
+    if not from_vetoer:
+        p.send_message({"src": msg["dst"],
+                        "dst": msg["src"],
+                        "text": "{}: we've sent out your report, thank you!".format(settings.appname)})
+
+def inform(msgid, msg: str):
+    print("\nInforming vetoers of report {}.".format(msgid))
+    print_msg(msg)
+
     p.send_message({"src": msg["dst"],
                     "dst": "<".join(settings.vetoers.keys()),
                     "text": '{}: ok/veto/ban {}? "{}"'.format(settings.appname, msgid, msg["text"])})
 
-def enqueue(msg):
-    msg["delay"] = settings.veto_delay
-    queue = get_db()
-    msgid = queue["next_id"]
-    queue[str(msgid)] = msg
-    queue["next_id"] = msgid + 1
-    return msgid
+def enqueue(msg) -> int:
+    db = get_db()
+    c = db.execute("insert into queue (src, dst, text, delay) values (?, ?, ?, ?)",
+            [msg["src"], msg["dst"], msg["text"], settings.veto_delay])
+    db.commit()
 
-def dequeue(msgid: str) -> bool:
-    queue = get_db()
-    try:
-        del queue[msgid]
+    print("\nEnqueued report {}.".format(c.lastrowid))
+    print_msg(msg)
+
+    return c.lastrowid
+
+def dequeue(msgid) -> bool:
+    db = get_db()
+    c = db.execute("delete from queue where id = ?", [msgid])
+    db.commit()
+
+    db_changed = bool(c.rowcount)
+    if db_changed:
+        print("\nRemoved report {} from the queue.".format(msgid))
         return True
-    except KeyError:
+
+    return False
+
+def send_immediately(msgid) -> bool:
+    msg = get_db().execute("select src, dst, text from queue where id = ?", [msgid]).fetchone()
+    if msg is None:
         return False
 
-def send_immediately(msgid: str) -> bool:
-    queue = get_db()
-    try:
-        msg = queue[msgid]
-        blast(msg, queue["subscribers"])
-        del queue[msgid]
-        return True
-    except KeyError:
-        return False
+    print("\nReport {} explicitly approved for sending.")
+    blast(msg)
+    return dequeue(msgid)
 
 def queue_runner():
-
-    # not connected to an application context, so we need to manage our own
-    # reference to queue
-    queue = connect_db()
-
     while True:
         sleep(settings.queue_interval)
 
-        # beware funky mutate semantics; queue can't mutate in-place!
-        to_delete = []
+        # each queue sweep is handled in a new app context
+        with app.app_context():
+            db = get_db()
 
-        for msgid in queue:
-            if msgid in ("next_id", "subscribers", "banned"):
-                continue
+            db.execute("update queue set delay = delay - 1")
+            to_blast = db.execute("select id, src, dst, text from queue where delay <= 0").fetchall()
+            db.execute("delete from queue where delay <= 0")
+            db.commit()
 
-            msg = queue[msgid]
-            if msg["delay"] <= 1:
-                print("blasting queued message")
-                blast(msg, queue["subscribers"])
-                to_delete.append(msgid)
-            else:
-                msg["delay"] -= 1
-                queue[msgid] = msg
+            for msg in to_blast:
+                print("\nMessage {} passed through veto period with no comments, so it's been automatically approved.".format(msg["id"]))
+                blast(msg)
 
-        for msgid in to_delete:
-            del queue[msgid]
+def subscribe(number: str):
+    db = get_db()
+    db.execute("insert into subscribers (number) values (?)", [number])
+    db.commit()
+    print("\nSubscribed {}.".format(number))
 
-        # manually sync, since the queue will never be 'properly' closed
-        queue.sync()
+def unsubscribe(number: str) -> bool:
+    '''returns whether the number was subscribed in the first place'''
+
+    db = get_db()
+    c = db.execute("delete from subscribers where number = ?", [number])
+    db_changed = bool(c.rowcount)
+    db.commit()
+
+    if db_changed:
+        print("\nUnsubscribed {}.".format(number))
+
+    return db_changed
+
+def ban(number):
+    db = get_db()
+    db.execute("delete from subscribers where number = ?", [number])
+    db.execute("insert into banned (number) values (?)", [number])
+    db.commit()
+    print("\nBanned {}.".format(number))
+
+class UserType(Enum):
+    UNSUBSCRIBED = auto()
+    SUBSCRIBED = auto()
+    BANNED = auto()
+    VETOER = auto()
+
+    @classmethod
+    def from_number(cls, number, subscribers, banned, vetoers):
+        if number in vetoers:
+            return cls.VETOER
+        elif number in banned:
+            return cls.BANNED
+        elif number in subscribers:
+            return cls.SUBSCRIBED
+        else:
+            return cls.UNSUBSCRIBED
 
 @app.route('/test/', methods=['GET'])
 def test():
@@ -104,123 +198,88 @@ def test():
 
 @app.route('/receive_sms/', methods=['GET', 'POST'])
 def receive_sms():
-    msg = {
-            "src": request.values.get('From'),
-            "dst": request.values.get('To'),
-            "text": request.values.get('Text').strip(),
-    }
-
-    pprint(msg)
+    msg = {"src": request.values.get('From'),
+           "dst": request.values.get('To'),
+           "text": request.values.get('Text').strip()}
 
     if msg["src"] is None or msg["dst"] is None or msg["text"] is None:
         return make_response("something's missing", 403)
 
-    with connect_db() as queue:
+    db = get_db()
 
-        if msg["src"] in queue["banned"]:
-            print("ignoring banned user")
-            return responses.ignore()
+    if not msg["text"]:
+        print("\nIgnoring empty text")
+        return responses.ignore()
 
-        if not msg["text"]:
-            print("ignoring empty text")
-            return responses.ignore()
+    user_type = UserType.from_number(msg["src"], subscribers=get_subscribers(), banned=get_banned(), vetoers=settings.vetoers)
+    print("\nReceived SMS from {} ({}) to {}: {}".format(msg["src"], user_type.name.lower(), msg["dst"], msg["text"]))
 
-        if msg["text"].lower() in ("stop", "unsubscribe"):
-            if msg["src"] not in queue["subscribers"]:
-                return responses.ignore()
-            subs = queue["subscribers"]
-            try:
-                subs.remove(msg["src"])
-                queue["subscribers"] = subs
-                print("unsubscribed")
-            except ValueError:
-                return responses.ignore()
-            return responses.unsubscribed(msg["src"], msg["dst"])
+    if user_type is UserType.BANNED:
+        print("\nIgnoring banned user {}".format(msg["src"]))
+        return responses.ignore()
 
-        if msg["text"].lower() == "subscribe":
-            if msg["src"] in queue["subscribers"] or msg["src"] in settings.vetoers:
-                return responses.ignore()
-            subs = queue["subscribers"]
-            subs.append(msg["src"])
-            queue["subscribers"] = subs
-            print("subscribed")
-            return responses.subscribed(msg["src"], msg["dst"])
+    if msg["text"].lower() in commands.unsubscribe:
+        if user_type is UserType.UNSUBSCRIBED:
+            return responses.not_subscribed(msg["src"], msg["dst"])
+        unsubscribe(msg["src"])
+        return responses.unsubscribed(msg["src"], msg["dst"])
 
-        if msg["src"] not in settings.vetoers:
-            msgid = enqueue(msg)
-            inform(msgid, msg)
-            print("message queued")
-            return responses.queued(msg["src"], msg["dst"])
+    if user_type is not UserType.UNSUBSCRIBED and msg["text"].lower() in commands.subscribe:
+        return responses.already_subscribed(msg["src"], msg["dst"])
 
-        cmd = msg["text"].strip('"').split()
-        try:
+    if user_type is UserType.UNSUBSCRIBED and commands.has_subscribe_phrase(msg["text"]):
+        subscribe(msg["src"])
+        return responses.subscribed(msg["src"], msg["dst"])
 
-            if cmd[0].lower() == "ban":
-                to_ban = queue[cmd[1]]["src"]
-                if dequeue(cmd[1]):
-                    banned = queue["banned"]
-                    banned.append(to_ban)
-                    queue["banned"] = banned
-                    subs = queue["subscribers"]
-                    try:
-                        subs.remove(to_ban)
-                        queue["subscribers"] = subs
-                    except ValueError:
-                        return responses.ignore()
-                    print("message vetoed and user banned!")
-                    return responses.banned(cmd[1], msg["src"], msg["dst"])
-                else:
-                    return responses.nomsg(cmd[1], msg["src"], msg["dst"])
+    if user_type is not UserType.VETOER:
+        msgid = enqueue(msg)
+        inform(msgid, msg)
+        return responses.queued(msg["src"], msg["dst"])
 
-            # veto for msgid
-            if cmd[0].lower() == "veto":
-                if dequeue(cmd[1]):
-                    print("message vetoed!")
-                    return responses.vetoed(cmd[1], msg["src"], msg["dst"])
-                else:
-                    return responses.nomsg(cmd[1], msg["src"], msg["dst"])
+    # VETOER COMMANDS BELOW
 
-            # queue override for msgid
+    cmd = msg["text"].strip('"').split()
+    try:
+        if cmd[0].lower() in ("ok", "veto", "ban"):
+            msg_requested = db.execute("select src, dst, text from queue where id = ?", [cmd[1]]).fetchone()
+            if msg_requested is None:
+                return responses.nomsg(cmd[1], msg["src"], msg["dst"])
+
             if cmd[0].lower() == "ok":
                 if send_immediately(cmd[1]):
-                    print("message explicitly approved")
                     return responses.approved(cmd[1], msg["src"], msg["dst"])
-                else:
-                    return responses.nomsg(cmd[1], msg["src"], msg["dst"])
+                return responses.nomsg(cmd[1], msg["src"], msg["dst"])
 
-            if msg["text"].lower() == "subscribers":
-                return responses.subscribers(msg["src"], len(queue["subscribers"]), msg["dst"])
+            if dequeue(cmd[1]):
+                if cmd[0].lower() == "ban":
+                    ban(msg_requested["src"])
+                    return responses.ban(cmd[1], msg_requested["src"], msg["src"], msg["dst"])
+                return responses.vetoed(cmd[1], msg["src"], msg["dst"])
+            return responses.nomsg(cmd[1], msg["src"], msg["dst"])
 
-            if msg["text"].lower() == "vetoers":
-                return responses.vetoers(msg["src"], msg["dst"])
+        if msg["text"].lower() in ("subscribers", "subscribed"):
+            return responses.subscribers(msg["src"], len(get_subscribers()), msg["dst"])
 
-            if msg["text"].lower() == "ping":
-                return responses.pong(msg["src"], msg["dst"])
+        if msg["text"].lower() == "vetoers":
+            return responses.vetoers(msg["src"], msg["dst"])
 
-        except IndexError:
-            return responses.nomsgid(msg["src"], msg["dst"])
+        if msg["text"].lower() == "banned":
+            return responses.banned(msg["src"], len(get_banned()), msg["dst"])
 
-        # direct blast message
-        print("directly blasting message from vetoer")
-        return responses.blast(msg["text"], queue["subscribers"], msg["src"], msg["dst"])
+        if msg["text"].lower() == "ping":
+            return responses.pong(msg["src"], msg["dst"])
+
+    except IndexError:
+        return responses.nomsgid(msg["src"], msg["dst"])
+
+    # direct blast message
+    print("\nDirectly blasting message from known vetoer")
+    print_msg(msg)
+
+    blast(msg, from_vetoer=True)
+    return responses.thank_you(msg["src"], msg["dst"])
 
 if __name__ == "__main__":
-
-    # not connected to an application context, so we need to manage our own
-    # reference to queue
-    queue = connect_db()
-
-    # initialize database if blank
-    if "next_id" not in queue:
-        queue["next_id"] = 0
-    if "subscribers" not in queue:
-        queue["subscribers"] = settings.initial_subscribers
-    if "banned" not in queue:
-        queue["banned"] = []
-
-    # not in an app context, so manual close is necessary
-    queue.close()
-
     t = Thread(target=queue_runner)
     t.start()
     app.run(host='0.0.0.0', port=80)
