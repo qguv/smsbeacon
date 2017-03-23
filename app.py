@@ -221,6 +221,12 @@ def receive_sms():
         print("\nIgnoring banned user {}".format(msg["src"]))
         return responses.ignore()
 
+    if msg["text"].lower() == "unstop":
+        if user_type is UserType.UNSUBSCRIBED:
+            subscribe(msg["src"])
+            return responses.subscribed(msg["src"], msg["dst"])
+        return responses.already_subscribed(msg["src"], msg["dst"])
+
     if msg["text"].lower() in commands.unsubscribe:
         if user_type is UserType.UNSUBSCRIBED:
             return responses.not_subscribed(msg["src"], msg["dst"])
