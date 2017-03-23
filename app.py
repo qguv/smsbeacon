@@ -260,7 +260,7 @@ def receive_sms():
                 return responses.vetoed(cmd[1], msg["src"], msg["dst"])
             return responses.nomsg(cmd[1], msg["src"], msg["dst"])
 
-        if msg["text"].lower() in ("subscribers", "subscribed"):
+        if msg["text"].lower() in ("subscribers", "subscribed", "signups", "sign-ups", "signed up", "signed-up", "users"):
             return responses.subscribers(msg["src"], len(get_subscribers()), msg["dst"])
 
         if msg["text"].lower() == "vetoers":
@@ -269,7 +269,7 @@ def receive_sms():
         if msg["text"].lower() == "queue":
             return responses.queue_status(msg["src"], get_queue(), msg["dst"])
 
-        if msg["text"].lower() == "banned":
+        if msg["text"].lower() in ("banned", "bans"):
             return responses.banned(msg["src"], len(get_banned()), msg["dst"])
 
         if msg["text"].lower() == "ping":

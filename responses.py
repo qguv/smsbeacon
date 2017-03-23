@@ -66,7 +66,7 @@ def blast(text, subscribers, by, number):
     return xmlgen("<".join(subscribers), "{}: {}".format(settings.appname, text), number)
 
 def subscribers(to, n, number):
-    return xmlgen(to, "{}: {} subscribers".format(settings.appname, n), number)
+    return xmlgen(to, "{}: {} subscribers, excluding vetoers".format(settings.appname, n), number)
 
 def banned(to, n, number):
     return xmlgen(to, "{}: {} banned".format(settings.appname, n), number)
