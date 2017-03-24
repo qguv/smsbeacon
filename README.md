@@ -9,6 +9,7 @@ Send a text to a number registered with Plivo, and Beacon will forward it to a s
 ### commands
 - `subscribe`: sign up to get alerts
 - `unsubscribe`: opt out of alerts; you might not get confirmation
+- `unstop`: resubscribe after you've unsubscribed; you might need to send this twice. **If beacon isn't responding after you've unsubscribed, try unstop!**
 - anything else is added to a queue for a short time to allow spam to be vetoed; after that, it will be sent to all subscribers
 
 ### vetoer commands
