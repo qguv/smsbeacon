@@ -144,7 +144,7 @@ def send_immediately(msgid) -> bool:
     if msg is None:
         return False
 
-    print("\nReport {} explicitly approved for sending.")
+    print("\nReport {} explicitly approved for sending.".format(msgid))
     blast(msg)
     return dequeue(msgid)
 
