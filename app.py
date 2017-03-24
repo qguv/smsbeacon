@@ -82,7 +82,7 @@ def blast(msg, from_vetoer=False):
                     "dst": "<".join(dest),
                     "text": "{}: {}".format(settings.appname, msg["text"])})
 
-    # notify vetoers and request veto/ok/ban (if not from a vetoer)
+    # notify vetoers that we've sent the report
     if not from_vetoer:
         p.send_message({"src": msg["dst"],
                         "dst": "<".join(settings.vetoers.keys()),
@@ -262,10 +262,13 @@ def receive_sms():
 
     cmd = msg["text"].strip('"').split()
     try:
-        if cmd[0].lower() in ("ok", "veto", "ban"):
+        if cmd[0].lower() in ("ok", "veto", "ban", "info"):
             msg_requested = db.execute("select src, dst, text from queue where id = ?", [cmd[1]]).fetchone()
             if msg_requested is None:
                 return responses.nomsg(cmd[1], msg["src"], msg["dst"])
+
+            if cmd[0].lower() == "info":
+                return responses.inform(cmd[1], msg_requested["text"], msg["src"], msg["dst"])
 
             if cmd[0].lower() == "ok":
                 if send_immediately(cmd[1]):

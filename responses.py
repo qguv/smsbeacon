@@ -68,6 +68,11 @@ def blast(text, subscribers, by, number):
         pass
     return xmlgen("<".join(dest), text, number)
 
+def inform(msgid, text, to, number):
+    return xmlgen(to,
+                 'ok/veto/ban {}? "{}"'.format(msgid, text),
+                 number)
+
 def wallops_ok(to, number):
     return xmlgen(to, "message sent to vetoers", number)
 

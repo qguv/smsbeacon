@@ -19,6 +19,7 @@ Users registered as "vetoers" also have access to the following commands:
 - `ok 24`: approves message 24 in the queue to be sent immediately to subscribers
 - `veto 24`: vetos message 24 in the queue, preventing it from being sent to subscribers
 - `ban 24`: vetos message 24 in the queue and bans its author, preventing it from being sent to subscribers
+- `info 24`: shows the contents of message 24 in the queue
 - `vetoers some text here`: sends "some text here" to all vetoers but not regular subscribers
 - `vetoers`: who is currently listed as a vetoer
 - `subscribers`: how many non-vetoers are signed up
