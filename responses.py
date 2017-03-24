@@ -68,6 +68,9 @@ def blast(text, subscribers, by, number):
         pass
     return xmlgen("<".join(dest), text, number)
 
+def wallops_ok(to, number):
+    return xmlgen(to, "message sent to vetoers", number)
+
 def subscribers(to, n, number):
     return xmlgen(to, "{} subscribers, excluding vetoers".format(n), number)
 

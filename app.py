@@ -95,6 +95,19 @@ def blast(msg, from_vetoer=False):
                         "dst": msg["src"],
                         "text": "{}: we've sent out your report, thank you!".format(settings.appname)})
 
+def wallops(text, by, number):
+    dest = list(settings.vetoers.keys())
+    try:
+        dest.remove(by)
+    except ValueError:
+        pass
+    p.send_message({"src": number,
+                    "dst": "<".join(dest),
+                    "text": '{}: message to vetoers from {} (not sent to subscribers): "{}"'.format(
+                        settings.appname,
+                        settings.vetoers[by],
+                        text)})
+
 def inform(msgid, msg: str):
     print("\nInforming vetoers of report {}.".format(msgid))
     print_msg(msg)
@@ -271,6 +284,10 @@ def receive_sms():
 
         if msg["text"].lower() == "vetoers":
             return responses.vetoers(msg["src"], msg["dst"])
+
+        if cmd[0].lower() == "vetoers":
+            wallops(" ".join(cmd[1:]), msg["src"], msg["dst"])
+            return responses.wallops_ok(msg["src"], msg["dst"])
 
         if msg["text"].lower() == "queue":
             return responses.queue_status(msg["src"], get_queue(), msg["dst"])
