@@ -20,10 +20,12 @@ Users registered as "vetoers" also have access to the following commands:
 - `veto 24`: vetos message 24 in the queue, preventing it from being sent to subscribers
 - `ban 24`: vetos message 24 in the queue and bans its author, preventing it from being sent to subscribers
 - `info 24`: shows the contents of message 24 in the queue
+- `queue`: shows how many messages are in the message queue and their ids
 - `vetoers some text here`: sends "some text here" to all vetoers but not regular subscribers
 - `vetoers`: who is currently listed as a vetoer
 - `subscribers`: how many non-vetoers are signed up
-- `ping`: will reply "pong"
+- `banned`: how many numbers are banned
+- `ping`: will reply "pong" (useful for testing)
 - anything else is treated like a direct message blast, sent directly to all subscribers and vetoers without going through the queue. **Careful with this one!**
 
 ## spin up your own
