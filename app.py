@@ -250,7 +250,7 @@ def receive_sms():
 
     if user_type is UserType.BANNED:
         print("\nIgnoring banned user {}".format(msg["src"]))
-        return responses.ignore()
+        return responses.queued(msg["src"], msg["dst"])
 
     if msg["text"].lower() == "unstop":
         if user_type is UserType.UNSUBSCRIBED:
