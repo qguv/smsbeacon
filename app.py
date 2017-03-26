@@ -323,9 +323,6 @@ def receive_sms():
         return responses.nomsgid(msg["src"], msg["dst"])
 
     # direct blast message
-    print("\nDirectly blasting message from known vetoer")
-    print_msg(msg)
-
     blast(msg, from_vetoer=True)
     return responses.thank_you(msg["src"], msg["dst"])
 
