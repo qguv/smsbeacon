@@ -31,13 +31,31 @@ Users registered as "vetoers" also have access to the following commands:
 ## spin up your own
 
 - get a [plivo][] account and buy a number or two; note your plivo id and auth token
-- clone this repository
+- clone this repository on a webserver
 - put your plivo id and auth token in settings.py
-- add vetoers in settings.py (especially for your testing cell phone)
+- also in settings.py, set `root_key` to a randomly generated long alphanumeric string
+- add vetoers and default subscribers in settings.py (especially for your testing cell phone)
 - `FLASK_APP=app.py flask initdb`
-- run app.py as a daemon on a machine with port 80 publicly accessible
-- go to plivo and tell the plivo number's connected application the address of your machine running app.py
+- run app.py as a daemon; make sure port 80 is publicly accessible
+- go to plivo and set the plivo number's connected application to the address of your webserver, with the route:
+
+```
+http://your-server-ip-or-domain:your_port/your_root_key
+```
+
 - text `ping` to your plivo number from a vetoer number
 - get everyone to subscribe
 
 [plivo]: (https://plivo.com/)
+
+## troubleshooting
+
+First, can you access `http://your-server-ip-or-domain/test` in a browser?
+
+If the server times out, the server is not running, or else the port is blocked on the server with a firewall or in network hardware, or else there is some server misconfiguration.
+
+If you're getting 403 "forbidden", check permissions, especially of the user running the server. If you're using a port less than 1024, you need to have superuser privileges on most unix systems.
+
+If you're getting 503 "internal server errors", check the output of the process running app.py for more information.
+
+Otherwise I don't know what's wrong. Throw a sysadmin some candy and approach them slowly, maybe they'll help if they don't see you as a threat.

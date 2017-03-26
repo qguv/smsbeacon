@@ -13,6 +13,10 @@ try:
     except ValueError:
         port = 80
 
+    root_key = input("Root key? [enter for changethis] ")
+    if not root_key:
+        root_key = "changethis"
+
     dst  = input("To:   ") or "11111111111"
 
     while True:
@@ -25,7 +29,7 @@ try:
             src = input("From: ").strip()
 
         text = input("Message: ")
-        print(requests.get("http://{}:{}/receive_sms/".format(host, port), params={"From": src, "To": dst, "Text": text}).text)
+        print(requests.get("http://{}:{}/{}/".format(host, port, root_key), params={"From": src, "To": dst, "Text": text}).text)
 
-except KeyboardInterrupt:
+except (KeyboardInterrupt, EOFError):
     print("\nbye")

@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 
-from flask import Flask, request, make_response, g
+from flask import Flask, request, make_response, g, Blueprint
 import plivo
 
 from enum import Enum
 from time import sleep
 from threading import Thread
-from pprint import pprint
 import sqlite3
 import os
 
@@ -14,7 +13,9 @@ import settings
 import responses
 import commands
 
+bp = Blueprint(settings.appname, __name__)
 app = Flask(__name__)
+
 p = plivo.RestAPI(settings.plivo_id, settings.plivo_token)
 
 def connect_db():
@@ -208,24 +209,41 @@ class UserType(Enum):
         else:
             return cls.UNSUBSCRIBED
 
+class InvalidNumber(ValueError):
+    pass
+
+def sanitize_number(number: str):
+    '''defend against possible SQL or plivo-XML injection attacks which rely on
+    non-numeric characters in To and From numbers'''
+    if not all(ord('0') <= ord(digit) <= ord('9') for digit in number):
+        raise InvalidNumber
+    return number
+
+@bp.route('/test/', methods=['GET'])
 @app.route('/test/', methods=['GET'])
 def test():
     return "OK"
 
-@app.route('/receive_sms/', methods=['GET', 'POST'])
+@bp.route('/', methods=['GET', 'POST'])
 def receive_sms():
-    msg = {"src": request.values.get('From'),
-           "dst": request.values.get('To'),
-           "text": request.values.get('Text').strip()}
+    try:
+        msg = {"src": sanitize_number(request.values.get('From', None)),
+               "dst": sanitize_number(request.values.get('To', None)),
+               "text": request.values.get('Text', None)}
 
-    if msg["src"] is None or msg["dst"] is None or msg["text"] is None:
-        return make_response("something's missing", 403)
+    except InvalidNumber:
+        return make_response("invalid", 406)
 
-    db = get_db()
+    if not (msg["src"] and msg["dst"] and msg["text"]):
+        return make_response("missing parameter", 406)
+
+    msg["text"] = msg["text"].strip()
 
     if not msg["text"]:
         print("\nIgnoring empty text")
-        return responses.ignore()
+        return make_response("empty", 406)
+
+    db = get_db()
 
     user_type = UserType.from_number(msg["src"], subscribers=get_subscribers(), banned=get_banned(), vetoers=settings.vetoers)
     print("\nReceived SMS from {} ({}) to {}: {}".format(msg["src"], user_type.name.lower(), msg["dst"], msg["text"]))
@@ -311,7 +329,9 @@ def receive_sms():
     blast(msg, from_vetoer=True)
     return responses.thank_you(msg["src"], msg["dst"])
 
+app.register_blueprint(bp, url_prefix="/" + settings.root_key)
+
 if __name__ == "__main__":
     t = Thread(target=queue_runner)
     t.start()
-    app.run(host='0.0.0.0', port=80)
+    app.run(host='0.0.0.0', port=settings.port)

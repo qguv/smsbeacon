@@ -3,7 +3,7 @@ from flask import Response, make_response
 import settings
 
 def ignore():
-    return make_response("um alright", 201)
+    return make_response("", 204)
 
 def xmlgen(to, text, number):
     m = '<Response><Message dst="{}" src="{}">{}: {}</Message></Response>'
