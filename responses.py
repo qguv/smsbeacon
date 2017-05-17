@@ -1,95 +1,90 @@
 from xml.sax.saxutils import escape
-from flask import Response, make_response
+from flask import Response
 import settings
 
-def xmlgen(to, text, number):
+def xmlgen(name, to, text, number):
     m = '<Response><Message dst="{}" src="{}">{}: {}</Message></Response>'
     return Response(m.format(to, number, escape(settings.appname), escape(text)), mimetype="text/xml")
 
-def queued(to, number):
-    return xmlgen(to, "report received", number)
+def queued(name, to, number):
+    return xmlgen(name, to, "report received", number)
 
-def vetoed(msgid, by, number):
-    return xmlgen("<".join(settings.vetoers.keys()),
-            "message {} vetoed by {}".format(msgid, settings.vetoers[by]),
+def vetoed(name, msgid, by, number, investigators: dict):
+    return xmlgen(name, "<".join(investigators.keys()),
+            "message {} vetoed by {}".format(msgid, investigators[by]),
             number)
 
-def ban(msgid, number_banned, by, number):
-    return xmlgen("<".join(settings.vetoers.keys()),
-            "message {} vetoed and its sender ({}) banned by {}".format(msgid, number_banned, settings.vetoers[by]),
+def ban(name, msgid, number_banned, by, number, investigators: dict):
+    return xmlgen(name, "<".join(investigators.keys()),
+            "message {} vetoed and its sender ({}) banned by {}".format(msgid, number_banned, investigators[by]),
             number)
 
-def approved(msgid, by, number):
-    return xmlgen("<".join(settings.vetoers.keys()),
-            "message {} approved by {}".format(msgid, settings.vetoers[by]),
+def approved(name, msgid, by, number, investigators: dict):
+    return xmlgen(name, "<".join(investigators.keys()),
+            "message {} approved by {}".format(msgid, investigators[by]),
             number)
 
-def subscribed(to, number):
-    return xmlgen(to,
+def subscribed(name, to, number):
+    return xmlgen(name, to,
             "you've subscribed, reply with the word unsubscribe to opt-out",
             number)
 
-def not_subscribed(to, number):
-    return xmlgen(to,
+def not_subscribed(name, to, number):
+    return xmlgen(name, to,
             "you aren't subscribed, reply with the word subscribe to subscribe to updates",
             number)
 
-def already_subscribed(to, number):
-    return xmlgen(to,
+def already_subscribed(name, to, number):
+    return xmlgen(name, to,
             "you're already subscribed, reply with the word unsubscribe to opt-out",
             number)
 
-def thank_you(to, number):
-    return xmlgen(to,
+def thank_you(name, to, number):
+    return xmlgen(name, to,
             "we've sent out your report, thank you!",
             number)
 
-def unsubscribed(to, number):
-    return xmlgen(to, "you've unsubscribed", number)
+def good_luck(name, msgid, to, number):
+    return xmlgen(name, to,
+            "Delay extended. Remember to approve {} or veto {} once you've confirmed/denied the report. Good luck.".format(msgid, msgid),
+            number)
 
-def nomsg(msgid, to, number):
-    return xmlgen(to,
+def ack_cant_go(name, to, number):
+    return xmlgen(name, to, "got it, that's okay", number)
+
+def unsubscribed(name, to, number):
+    return xmlgen(name, to, "you've unsubscribed", number)
+
+def nomsg(name, msgid, to, number):
+    return xmlgen(name, to,
         "no message with id {}".format(msgid),
         number)
 
-def nomsgid(to, number):
-    return xmlgen(to,
+def nomsgid(name, to, number):
+    return xmlgen(name, to,
             "you forgot a message id: e.g. veto 28",
             number)
 
-def blast(text, subscribers, by, number):
-    dest = subscribers + list(settings.vetoers.keys())
-    try:
-        dest.remove(by)
-    except ValueError:
-        pass
-    return xmlgen("<".join(dest), text, number)
+def wallops_ok(name, to, number):
+    return xmlgen(name, to, "message sent to investigators", number)
 
-def inform(msgid, text, to, number):
-    return xmlgen(to,
-                 'ok/veto/ban {}? "{}"'.format(msgid, text),
-                 number)
+def subscribers(name, to, n, number):
+    return xmlgen(name, to, "{} subscribers".format(n), number)
 
-def wallops_ok(to, number):
-    return xmlgen(to, "message sent to vetoers", number)
+def banned(name, to, n, number):
+    return xmlgen(name, to, "{} banned".format(n), number)
 
-def subscribers(to, n, number):
-    return xmlgen(to, "{} subscribers, excluding vetoers".format(n), number)
-
-def banned(to, n, number):
-    return xmlgen(to, "{} banned".format(n), number)
-
-def queue_status(to, queue, number):
+def queue_status(name, to, queue, number):
     l = len(queue)
     plural = "" if l == 1 else "s"
-    return xmlgen(to, "{} message{} queued{}{}".format(l, plural, " with id{}: ".format(plural) if l else "", ", ".join(map(str, queue))), number)
+    return xmlgen(name, to, "{} message{} queued{}{}".format(l, plural, " with id{}: ".format(plural) if l else "", ", ".join(map(str, queue))), number)
 
-def vetoers(to, number):
-    return xmlgen(to,
-            "{} vetoers: {}".format(
-                len(settings.vetoers),
-                ", ".join(sorted(settings.vetoers.values()))),
+def investigators(name, to, number, investigators: dict):
+    return xmlgen(name, to,
+            "{} investigators: {}".format(
+                len(investigators),
+                ", ".join(sorted(investigators.values()))),
             number)
 
-def pong(to, number):
-    return xmlgen(to, "pong", number)
+def pong(name, to, number):
+    return xmlgen(name, to, "pong", number)
