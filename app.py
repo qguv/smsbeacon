@@ -303,10 +303,10 @@ def receive_sms():
         if msg["text"].lower() in ("subscribers", "subscribed", "signups", "sign-ups", "signed up", "signed-up", "users"):
             return responses.subscribers(msg["src"], len(get_subscribers()), msg["dst"])
 
-        if msg["text"].lower() == "vetoers":
+        if msg["text"].lower() == "investigators":
             return responses.vetoers(msg["src"], msg["dst"])
 
-        if cmd[0].lower() == "vetoers":
+        if cmd[0].lower() == "investigators":
             wallops(" ".join(cmd[1:]), msg["src"], msg["dst"])
             return responses.wallops_ok(msg["src"], msg["dst"])
 
