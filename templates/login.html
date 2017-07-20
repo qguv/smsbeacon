@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+<body>
+
+<form action="{{ url_for('login', locid=locid) }}" method="post" style="display: hidden;">
+
+{% if locid != 'root' %}
+Phone number:
+<br />
+<input type="text" name="telno" />
+<br />
+{% endif %}
+
+Password:
+<br />
+<input type="password" name="password" />
+<br />
+
+<input type="submit" value="Submit" />
+</form>
+
+</body>
+</html>
