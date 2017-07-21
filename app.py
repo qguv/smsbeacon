@@ -163,10 +163,12 @@ def token_auth(uid, token) -> None or Exception:
              from users
              where id=%s'''
 
-    with get_db().cursor() as c:
-        c.execute(sql, (uid))
-        thash, token_expires = c.fetchone()
-    print("got user with uid", uid) #DEBUG
+    try:
+        with get_db().cursor() as c:
+            c.execute(sql, (uid))
+            thash, token_expires = c.fetchone()
+    except:
+        raise Exception("couldn't get user")
 
     if token_expires < int(datetime.now().timestamp()):
         raise Exception("token expired")
@@ -243,6 +245,9 @@ def cookie_auth(allow_uids=all_of_them, allow_roles=[Role.ADMIN]) -> 'decorator'
                 print("invalid uid") #DEBUG
                 return unauthorized()
 
+            # TODO: we should redirect to the login for the locid they
+            # requested, not the one they ostensibly belong to, because one
+            # user may have several accounts on separate beacons
             try:
                 g.locid = user_locid(g.uid)
             except:
@@ -358,7 +363,7 @@ def root():
 @cookie_auth()
 def alerts(locid):
     if g.uid != ROOT_UID and g.locid != locid:
-        return forbidden()
+        return redirect(url_for('login', locid=locid))
 
     sql = '''select b.nickname, b.description
              from beacons b left join alerts a
@@ -377,6 +382,22 @@ def alerts(locid):
 @app.route('/beacons')
 @cookie_auth(allow_uids=[ROOT_UID])
 def beacons():
+    sql = '''select nickname, locid, description
+             from beacons'''
+    with get_db().cursor() as c:
+        c.execute(sql)
+        beacons = [ (nickname, locid.upper(), description, url_for('beacon_settings', locid=locid.lower()))
+                    for nickname, locid, description in c.fetchall() ]
+        return render_template("beacons.html", beacons=beacons)
+
+@app.route('/<locid>/settings')
+@cookie_auth()
+def beacon_settings(locid):
+    locid = locid.lower()
+
+    if g.uid != ROOT_UID and g.locid != locid:
+        return redirect(url_for('login', locid=locid))
+
     return 'TODO' #TODO
 
 @app.route('/beacons/new')

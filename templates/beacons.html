@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+<body>
+
+<h1>{{ '' if beacons else 'No ' }}Active Beacons</h1>
+
+{% if beacons %}
+<ul>
+{% for nickname, locid, description, url in beacons %}
+    <a href="{{ url }}">{{ nickname }} in {{ locid }}</a>
+{% endfor %}
+</ul>
+{% endif %}
+
+<a href="{{ url_for('new_beacon') }}">Deploy a new beacon</a>
+<br />
+<a href="{{ url_for('logout', locid='root') }}">Log out</a>
+
+</body>
+</html>
