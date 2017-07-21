@@ -7,6 +7,9 @@ from threading import Thread
 from datetime import datetime
 from random import SystemRandom
 from functools import wraps
+from pprint import pprint
+#from flask_wtf import FlaskForm
+#from wtforms import StringField
 import traceback #DEBUG
 import string
 import pymysql
@@ -42,6 +45,21 @@ class _AllOfThem():
 
 all_of_them = _AllOfThem()
 
+def beacon_model() -> dict(column=("label", "type", "value")):
+    return dict(
+        telno=["Beacon SMS number", "tel", ""],
+        nickname=["Nickname?", "text", "beacon"],
+        description=["Description", "textarea", ""],
+        locid=["Short location name (like ATL or WBG]", "text", ""],
+        plivo_id=["Plivo ID", "text", ""],
+        plivo_token=["Plivo token", "text", ""],
+        autosend=["Automatically send reports?", "checkbox", 1],
+        autosend_delay_minutes=["...after how many minutes?", "number", 5],
+        prune=["Automatically prune sent or rejected reports?", "checkbox", 1],
+        prune_delay_hours=["...after how many hours?", "number", 48],
+        new_secret=["New plivo secret?", "checkbox", 0],
+        token_lifetime_minutes=["Automatically log out after how many minutes?", "number", 5])
+
 class IntEnum(_IntEnum):
     def __str__(self, *args, **kwargs):
         return str(int(self))
@@ -61,6 +79,9 @@ class AlertType(IntEnum):
 
 # HELPERS
 
+def bad_request():
+    return make_response(('Bad request :(', 400, {}))
+
 def unauthorized():
     return make_response(('Unauthorized :(', 401, {}))
 
@@ -70,11 +91,17 @@ def forbidden():
 def not_found():
     return make_response(('Not Found :(', 404, {}))
 
+def getp(d, k, default=None):
+    '''Returns d[k] if it exists and isn't null, else returns default.'''
+    v = d.get('k', False)
+    if not v:
+        return default
+
 def random_token(length=16) -> str:
     return ''.join(SystemRandom().choices(string.ascii_uppercase + string.digits, k=length))
 
 def insert_into(cursor, table, **kwargs):
-    kwargs = { k: str(v) for k, v in kwargs.items() }
+    kwargs = { k: str(v) for k, v in kwargs.items() if v is not None }
     items = kwargs.items()
     keys, values = zip(*items)
     params = ", ".join(['%s'] * len(kwargs))
@@ -82,6 +109,15 @@ def insert_into(cursor, table, **kwargs):
 
     with get_db().cursor() as c:
         c.execute("insert into `{}` ({}) values ({})".format(table, columns, params), values)
+    get_db().commit()
+
+def update(cursor, table, **kwargs):
+    items = kwargs.items()
+    updates = ", ".join( "`{}` = %s".format(k) for k, v in items if v is not None )
+    values = [ str(v) for _, v in items if v is not None ]
+
+    with get_db().cursor() as c:
+        c.execute("update `{}` set {}".format(table, updates), values)
     get_db().commit()
 
 def user_token_lifetime(uid):
@@ -386,24 +422,64 @@ def beacons():
              from beacons'''
     with get_db().cursor() as c:
         c.execute(sql)
-        beacons = [ (nickname, locid.upper(), description, url_for('beacon_settings', locid=locid.lower()))
+        beacons = [ (nickname, locid.upper(), description, url_for('edit_beacon', locid=locid.lower()))
                     for nickname, locid, description in c.fetchall() ]
         return render_template("beacons.html", beacons=beacons)
 
-@app.route('/<locid>/settings')
-@cookie_auth()
-def beacon_settings(locid):
-    locid = locid.lower()
+def sanitize_beacon(form):
+    pprint(form) # DEBUG
+    return dict(
+        telno=form['telno'], # TODO normalize
+        nickname=getp(form, 'nickname', 'beacon'),
+        description=getp(form, 'description'),
+        locid=form['locid'].lower(),
+        plivo_id=form['plivo_id'],
+        plivo_token=form['plivo_token'],
+        autosend_delay=int(form['autosend_delay_minutes']) * 60 if form['autosend'] else None,
+        prune_delay=int(form['prune_delay_hours']) * 360 if getp(form, 'prune') else None,
+        token_lifetime=int(form['token_lifetime_minutes']) * 60,
+        secret=random_token(64) if getp(form, 'new_secret') else None)
 
-    if g.uid != ROOT_UID and g.locid != locid:
-        return redirect(url_for('login', locid=locid))
-
-    return 'TODO' #TODO
-
-@app.route('/beacons/new')
+@app.route('/beacons/new', methods=['GET', 'POST'])
 @cookie_auth(allow_uids=[ROOT_UID])
 def new_beacon():
-    return 'TODO' #TODO
+    if request.method == 'GET':
+        m = beacon_model()
+        del m['new_secret']
+        return render_template('beacon_form.html', verb='Create', inputs=m, post_to=url_for('new_beacon'), new_secret=None)
+
+    try:
+        # force a new secret when creating a new one
+        m = dict(request.form)
+        m['new_secret'] = 1
+        m = sanitize_beacon(m)
+
+        with get_db().cursor() as c:
+            insert_into(c, 'beacons', **m)
+        return redirect(url_for('edit_beacon', locid=m['locid'], new_secret=m['secret']))
+
+    except:
+        print(traceback.format_exc()) #DEBUG
+        return bad_request()
+
+@app.route('/<locid>/settings', methods=['GET', 'POST'], defaults={"new_secret", None})
+@cookie_auth()
+def edit_beacon(new_secret):
+    if g.uid != ROOT_UID and g.locid != locid:
+        return forbidden()
+
+    if request.method == 'GET':
+        return render_template('beacon_form.html', verb='Edit', inputs=beacon_model(), post_to=url_for('edit_beacon', locid=locid), new_secret=new_secret)
+
+    try:
+        m = sanitize_beacon(request.form)
+        with get_db().cursor() as c:
+            update(c, 'beacons', **m)
+
+        return redirect(url_for('edit_beacon', locid=m['locid'], new_secret=m.get('secret', None)))
+
+    except:
+        return bad_request()
 
 if __name__ == "__main__":
     app.run(port=5000, debug=True)

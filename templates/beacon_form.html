@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+<body>
+
+<h1>{{ verb }} Beacon</h1>
+
+{% if new_secret is not none %}
+<div>
+		<h2>Your Plivo secret has been updated. Please update the URL in Plivo to:</h2>
+		<code>{{ new_secret }}</code> {# TODO: add URL #}
+</div>
+{% endif %}
+
+<form action="{{ post_to }}" method="post">
+{% for column, (label, type, value) in inputs.items() %}
+<div>
+
+	{{ label }}
+	<br />
+
+	{% if type == 'textarea' %}
+		<textarea name="{{ column }}">
+		{{ value }}
+		</textarea>
+
+	{% elif type == 'checkbox' %}
+		<input name="{{ column }}" type="checkbox" value="1" {{ 'checked' if value else '' }} />
+
+	{% else %}
+		<input name="{{ column }}" type="{{ type }}" value="{{ value }}" />
+
+	{% endif %}
+
+</div>
+{% endfor %}
+
+<input type="reset" value="Reset" />
+<input type="submit" value="Submit" />
+</form>
+
+</body>
+</html>
