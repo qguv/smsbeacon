@@ -36,6 +36,12 @@ def close_db(error):
 
 ROOT_UID = 1
 
+class _AllOfThem():
+    def __contains__(self, _):
+        return True
+
+all_of_them = _AllOfThem()
+
 class IntEnum(_IntEnum):
     def __str__(self, *args, **kwargs):
         return str(int(self))
@@ -122,6 +128,17 @@ def user_telno(uid) -> "telno" or Exception:
 
     with get_db().cursor() as c:
         return c.execute(sql, (uid)).findone()[0]
+
+def user_role(uid) -> Role or Exception:
+    if uid == ROOT_UID:
+        return Role.ADMIN
+
+    sql = '''select role
+             from users u
+             where id=%s'''
+
+    with get_db().cursor() as c:
+        return Role(c.execute(sql, (uid)).findone()[0])
 
 def replace_token(uid) -> "token":
     if uid == ROOT_UID:
@@ -210,33 +227,46 @@ def change_password(uid, password) -> None or Exception:
         if not c.rowcount:
             raise Exception("no such user")
 
-def cookie_auth():
+def cookie_auth(allow_uids=all_of_them, allow_roles=[Role.ADMIN]) -> 'decorator':
     def wrapper(f):
         @wraps(f)
         def wrapped(*args, **kwargs):
             try:
                 g.uid = int(request.cookies['u'])
                 token = request.cookies['t']
-                g.locid = user_locid(g.uid)
-
             except KeyError:
                 print("couldn't get cookies") #DEBUG
                 return unauthorized()
-
             except ValueError:
                 print("invalid uid") #DEBUG
                 return unauthorized()
 
+            try:
+                g.locid = user_locid(g.uid)
             except:
                 print("couldn't get locid for user") #DEBUG
                 return unauthorized()
 
+            beacon_login = redirect(url_for('login', locid=g.locid))
+
+            if g.uid not in allow_uids:
+                print("uid not allowed")
+                return beacon_login
+
+            try:
+                g.role = user_role(g.uid) # TODO: combine
+                if g.role not in allow_roles:
+                    print("role not allowed")
+                    return beacon_login
+            except:
+                print("couldn't get role for user")
+                return beacon_login
+
             try:
                 token_auth(g.uid, token)
-
-            except:
-                print("token didn't match") #DEBUG
-                return redirect(url_for('login', locid=g.locid))
+            except Exception as e:
+                print("wrong token") #DEBUG
+                return beacon_login
 
             return f(*args, **kwargs)
 
@@ -258,7 +288,7 @@ def initdb():
             token_expires= now + settings.root_token_lifetime,
             created=now)
     get_db().commit()
-    print("Set the root password now at http://localhost:5000/root/login/" + root_token)
+    print("Run the app with ./app.py, then set the root password at http://localhost:5000/root/login/" + root_token)
 
 # ROUTES
 
@@ -313,11 +343,8 @@ def login(locid):
         return redirect(url_for('login', locid=locid))
 
 @app.route('/root', methods=['GET', 'POST'])
-@cookie_auth()
+@cookie_auth(allow_uids=[ROOT_UID])
 def root():
-    if g.uid != ROOT_UID:
-        return forbidden()
-
     if request.method == 'GET':
         return render_template("root.html", force_password_reset=not root_password_set())
 
@@ -346,10 +373,12 @@ def alerts(locid):
     return render_template("alerts.html", count=c.rowcount, nickname=nickname, locid=locid)
 
 @app.route('/beacons')
+@cookie_auth(allow_uids=[ROOT_UID])
 def beacons():
     return 'TODO' #TODO
 
 @app.route('/beacons/new')
+@cookie_auth(allow_uids=[ROOT_UID])
 def new_beacon():
     return 'TODO' #TODO
 
