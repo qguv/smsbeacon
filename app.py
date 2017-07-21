@@ -104,9 +104,10 @@ def user_locid(uid) -> "locid" or Exception:
 
     with get_db().cursor() as c:
         c.execute(sql, (uid))
-        return c.fetchone()[0]
+        return c.fetchone()[0].lower()
 
 def user_uid(locid, telno) -> "uid" or Exception:
+    locid = locid.lower()
     if 'root' in (locid, telno):
         return ROOT_UID
 
@@ -188,6 +189,7 @@ def root_password_auth(password) -> None or Exception:
         raise Exception("password doesn't match")
 
 def password_auth(locid, telno, password) -> None or Exception:
+    locid = locid.lower()
     if 'root' in (locid, telno):
         return root_password_auth(password)
 
