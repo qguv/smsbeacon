@@ -5,6 +5,10 @@ import string
 def random_token(length=16) -> str:
     return ''.join(SystemRandom().choices(string.ascii_uppercase + string.digits, k=length))
 
+def normal_telno(telno):
+    telno = ''.join([ c for c in telno if c in string.digits ])
+    return '1' + telno if len(telno) == 10 else telno
+
 class _AllOfThem():
     def __contains__(self, _):
         return True

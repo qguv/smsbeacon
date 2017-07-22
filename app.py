@@ -68,7 +68,7 @@ def insert_into(table, **kwargs):
     keys, values = zip(*kwargs.items())
 
     # get string representation, but leave None alone
-    values = list(map(lambda v: call_some(v, str), values))
+    values = [ call_some(v, str) for v in values ]
 
     params = ', '.join(['%s'] * len(keys))
     columns = ', '.join('`{}`'.format(k) for k in keys)
@@ -417,20 +417,21 @@ def new_beacon():
     if form.validate_on_submit():
         m = form.into_db()
 
-        flash('Beacon created', 'info')
-        flash(request.url_root.rstrip('/') + url_for('sms', locid=m['locid'], secret=m['secret']), 'new_secret')
-
         # store the new beacon in the database and show an edit form
         try:
             insert_into('beacons', **m)
+            flash("Beacon created", 'info')
+            flash(request.url_root.rstrip('/') + url_for('sms', locid=m['locid'], secret=m['secret']), 'new_secret')
             return redirect(url_for('edit_beacon', locid=m['locid']))
         except:
+            flash("Couldn't create beacon")
+            import traceback; traceback.print_exc() #DEBUG
             pass
 
     # if validation failed, inform the user
     for field, errors in form.errors.items():
         for error in errors:
-            flash("Error in {}: {}".format(getattr(form, field).label.text, error))
+            flash("{} {}".format(getattr(form, field).label.text, error), 'validation')
 
     # if this is a GET or failed POST, try again
     return render_template('beacon_form.html',
@@ -452,6 +453,7 @@ def edit_beacon(locid):
             m = get_from('beacons', forms.Beacon().into_db().keys(), 'locid = %s', (locid))
             form = forms.Beacon.from_db(m)
         except:
+            import traceback; traceback.print_exc() #DEBUG
             return not_found()
 
     # on POST, populate the form with request.form data
@@ -474,7 +476,7 @@ def edit_beacon(locid):
     # if validation failed, inform the user
     for field, errors in form.errors.items():
         for error in errors:
-            flash("Error in {}: {}".format(getattr(form, field).label.text, error))
+            flash("{} {}".format(getattr(form, field).label.text, error), 'validation')
 
     return render_template('beacon_form.html',
             verb='Edit',

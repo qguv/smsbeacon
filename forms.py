@@ -7,7 +7,28 @@ from werkzeug.datastructures import MultiDict
 BooleanField.false_values = {False, 'false', ''}
 
 import settings
-from utils import random_token, call_some
+from utils import random_token, call_some, normal_telno
+
+import string
+
+class InClassLength():
+    '''counts the number of characters within a character class'''
+    def __init__(self, chars, name, min=0, max=None):
+        self.chars = chars
+        self.name = name
+        self.min = min
+        self.max = max
+
+    def __call__(self, form, field):
+        n = 0
+        for c in field.data:
+            if c in self.chars:
+                n += 1
+
+        if n < self.min:
+            raise ValidationError("not enough {} ({} needed)".format(self.name, self.min))
+        if self.max is not None and n > self.max:
+            raise ValidationError("too many {} ({} maximum)".format(self.name, self.max))
 
 class InputRequiredIf():
     '''a wtforms validator which makes a field required if a given different
@@ -29,9 +50,7 @@ class InputRequiredIf():
 
 class Beacon(FlaskForm):
 
-    # FORM FIELDS
-
-    telno = StringField("Beacon SMS number:", [DataRequired()])
+    telno = StringField("Beacon SMS number:", [DataRequired(), InClassLength(string.digits, 'digits', min=10)])
     nickname = StringField("Nickname:", [DataRequired()], default="beacon")
     description = TextAreaField("Description?")
     locid = StringField("Short location name (like ATL or WBG):", [DataRequired(), Length(min=3, max=7)])
@@ -50,8 +69,6 @@ class Beacon(FlaskForm):
 
     secret = HiddenField()
 
-    # DB MODEL TO FORM
-
     @classmethod
     def from_db(cls, d):
         '''create a form from a database object'''
@@ -68,19 +85,13 @@ class Beacon(FlaskForm):
 
         d['locid'] = d['locid']
 
-        from pprint import pprint; pprint(d) # DEBUG
-        r = cls(MultiDict(d))
-        print(r.autosend.data)
-        print(r.prune.data)
         return cls(MultiDict(d))
 
-    # FORM TO DB MODEL
-
     def into_db(self):
-        '''turn the form response into a database object. any fields without a
-        default will be null when an empty form is instantiated.'''
+        '''turn the form response into a database object. must handle fields
+        being None, as they are just after the form object is instantiated.'''
         return dict(
-            telno = self.telno.data, # TODO normalize
+            telno = call_some(self.telno.data, normal_telno),
             nickname = self.nickname.data,
             description = self.description.data,
             locid = call_some(self.locid.data, lambda x: x.lower()),
