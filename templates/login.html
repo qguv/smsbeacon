@@ -1,8 +1,9 @@
-<!doctype html>
-<html>
-<body>
+{% extends 'base.html' %}
+{% block content %}
 
 <form action="{{ url_for('login', locid=locid) }}" method="post" style="display: hidden;">
+
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
 
 {% if locid != 'root' %}
 Phone number:
@@ -19,5 +20,4 @@ Password:
 <input type="submit" value="Submit" />
 </form>
 
-</body>
-</html>
+{% endblock %}

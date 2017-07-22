@@ -1,26 +1,27 @@
 #!/usr/bin/env python3
 
 import settings
+import forms
+from utils import random_token, all_of_them, IntEnum
 
-from enum import IntEnum as _IntEnum
-from threading import Thread
 from datetime import datetime
-from random import SystemRandom
 from functools import wraps
-import traceback #DEBUG
-import string
 import pymysql
 
 from passlib.context import CryptContext
-crypto = CryptContext(schemes=["pbkdf2_sha256"])
+crypto = CryptContext(schemes=['pbkdf2_sha256'])
 
 #import plivo
 #p = plivo.RestAPI(settings.plivo_id, settings.plivo_token)
 
 # BACKEND SETUP
 
-from flask import Flask, request, render_template, g, url_for, redirect, make_response
+from flask import Flask, request, render_template, g, url_for, redirect, \
+    make_response, get_flashed_messages, flash
+from flask_wtf.csrf import CSRFProtect
 app = Flask(__name__)
+app.secret_key = settings.flask_secret_key
+csrfp = CSRFProtect(app)
 
 def get_db():
     if not hasattr(g, 'db'):
@@ -33,18 +34,6 @@ def close_db(error):
         g.db.close()
 
 # DB ENUMS
-
-ROOT_UID = 1
-
-class _AllOfThem():
-    def __contains__(self, _):
-        return True
-
-all_of_them = _AllOfThem()
-
-class IntEnum(_IntEnum):
-    def __str__(self, *args, **kwargs):
-        return str(int(self))
 
 class Role(IntEnum):
     NOT_SUBSCRIBED = 0
@@ -61,6 +50,11 @@ class AlertType(IntEnum):
 
 # HELPERS
 
+ROOT_UID = 1
+
+def bad_request():
+    return make_response(('Bad request :(', 400, {}))
+
 def unauthorized():
     return make_response(('Unauthorized :(', 401, {}))
 
@@ -70,19 +64,38 @@ def forbidden():
 def not_found():
     return make_response(('Not Found :(', 404, {}))
 
-def random_token(length=16) -> str:
-    return ''.join(SystemRandom().choices(string.ascii_uppercase + string.digits, k=length))
-
-def insert_into(cursor, table, **kwargs):
-    kwargs = { k: str(v) for k, v in kwargs.items() }
+def insert_into(table, **kwargs):
+    kwargs = { k: str(v) for k, v in kwargs.items() if v is not None }
     items = kwargs.items()
     keys, values = zip(*items)
-    params = ", ".join(['%s'] * len(kwargs))
-    columns = ", ".join('`{}`'.format(k) for k in keys)
+    params = ', '.join(['%s'] * len(kwargs))
+    columns = ', '.join('`{}`'.format(k) for k in keys)
 
     with get_db().cursor() as c:
-        c.execute("insert into `{}` ({}) values ({})".format(table, columns, params), values)
+        c.execute('insert into `{}` ({}) values ({})'.format(table, columns, params), values)
     get_db().commit()
+
+def update(table, **kwargs):
+    items = kwargs.items()
+    updates = ', '.join( '`{}` = %s'.format(k) for k, v in items if v is not None )
+    values = [ str(v) for _, v in items if v is not None ]
+
+    with get_db().cursor() as c:
+        c.execute('update `{}` set {}'.format(table, updates), (values))
+    get_db().commit()
+
+def get_from(table, fields, where_clause, params=()):
+    sql = 'select {} from `{}` where {}'.format(
+            ', '.join( '`{}`'.format(field) for field in fields ),
+            table,
+            where_clause)
+
+    with get_db().cursor() as c:
+        c.execute(sql, params)
+        result = c.fetchone()
+        if result is None:
+            raise Exception('not found')
+        return dict(zip(fields, result))
 
 def user_token_lifetime(uid):
     sql = '''select b.token_lifetime
@@ -94,9 +107,9 @@ def user_token_lifetime(uid):
         c.execute(sql, (uid))
         return c.fetchone()[0]
 
-def user_locid(uid) -> "locid" or Exception:
+def user_locid(uid) -> 'locid' or Exception:
     if uid == ROOT_UID:
-        return "root"
+        return 'root'
 
     sql = '''select b.locid
              from users u inner join beacon b
@@ -106,7 +119,7 @@ def user_locid(uid) -> "locid" or Exception:
         c.execute(sql, (uid))
         return c.fetchone()[0].lower()
 
-def user_uid(locid, telno) -> "uid" or Exception:
+def user_uid(locid, telno) -> 'uid' or Exception:
     locid = locid.lower()
     if 'root' in (locid, telno):
         return ROOT_UID
@@ -119,7 +132,7 @@ def user_uid(locid, telno) -> "uid" or Exception:
     with get_db().cursor() as c:
         return c.execute(sql, (locid, telno)).findone()[0]
 
-def user_telno(uid) -> "telno" or Exception:
+def user_telno(uid) -> 'telno' or Exception:
     if uid == ROOT_UID:
         return 'root'
 
@@ -141,7 +154,7 @@ def user_role(uid) -> Role or Exception:
     with get_db().cursor() as c:
         return Role(c.execute(sql, (uid)).findone()[0])
 
-def replace_token(uid) -> "token":
+def replace_token(uid) -> 'token':
     if uid == ROOT_UID:
         token_lifetime = settings.root_token_lifetime
     else:
@@ -286,15 +299,13 @@ def cookie_auth(allow_uids=all_of_them, allow_roles=[Role.ADMIN]) -> 'decorator'
 def initdb():
     root_token = random_token()
     now = int(datetime.now().timestamp())
-    with get_db().cursor() as c:
-        insert_into(c, "users",
-            telno='root',
-            beacon='root',
-            role=Role.ADMIN,
-            thash=crypto.hash(root_token),
-            token_expires= now + settings.root_token_lifetime,
-            created=now)
-    get_db().commit()
+    insert_into('users',
+        telno='root',
+        beacon='root',
+        role=Role.ADMIN,
+        thash=crypto.hash(root_token),
+        token_expires= now + settings.root_token_lifetime,
+        created=now)
     print("Run the app with ./app.py, then set the root password at http://localhost:5000/root/login/" + root_token)
 
 # ROUTES
@@ -305,13 +316,14 @@ def test():
 
 @app.route('/<locid>/logout')
 def logout(locid):
-    response = redirect(url_for('login', locid=locid))
+    response = redirect(url_for('login', locid=locid.lower()))
     response.set_cookie('t', '')
     return response
 
 @app.route('/<locid>/login/<int:uid>/<token>')
 @app.route('/root/login/<token>', defaults={'locid': 'root', 'uid': ROOT_UID})
 def autologin(locid, uid, token):
+    locid = locid.lower()
     try:
         token_auth(uid, token)
         print("successfully authenticated through URL") # DEBUG
@@ -321,13 +333,13 @@ def autologin(locid, uid, token):
         return response
     except:
         print("URL auth failed") # DEBUG
-        print(traceback.format_exc()) #DEBUG
         return redirect(url_for('login', locid=locid))
 
 @app.route('/<locid>/login', methods=['GET', 'POST'])
 def login(locid):
+    locid = locid.lower()
     if request.method == 'GET':
-        return render_template("login.html", locid=locid)
+        return render_template('login.html', locid=locid)
     try:
         password = request.form['password']
 
@@ -346,14 +358,16 @@ def login(locid):
         response.set_cookie('t', replace_token(uid))
         return response
     except:
-        print(traceback.format_exc()) #DEBUG
         return redirect(url_for('login', locid=locid))
 
 @app.route('/root', methods=['GET', 'POST'])
 @cookie_auth(allow_uids=[ROOT_UID])
 def root():
     if request.method == 'GET':
-        return render_template("root.html", force_password_reset=not root_password_set())
+        force_password_reset = not root_password_set()
+        if force_password_reset:
+            flash("Welcome! Please set the root password.", 'info')
+        return render_template('root.html', force_password_reset=force_password_reset)
 
     password = request.form['password']
     change_password(ROOT_UID, password)
@@ -362,6 +376,7 @@ def root():
 @app.route('/<locid>/alerts')
 @cookie_auth()
 def alerts(locid):
+    locid = locid.lower()
     if g.uid != ROOT_UID and g.locid != locid:
         return redirect(url_for('login', locid=locid))
 
@@ -377,33 +392,108 @@ def alerts(locid):
     except:
         return not_found()
 
-    return render_template("alerts.html", count=c.rowcount, nickname=nickname, locid=locid)
+    return render_template('alerts.html', count=c.rowcount, nickname=nickname, locid=locid)
 
 @app.route('/beacons')
 @cookie_auth(allow_uids=[ROOT_UID])
 def beacons():
-    sql = '''select nickname, locid, description
-             from beacons'''
     with get_db().cursor() as c:
-        c.execute(sql)
-        beacons = [ (nickname, locid.upper(), description, url_for('beacon_settings', locid=locid.lower()))
+        c.execute('select `nickname`, `locid`, `description` from `beacons`')
+        beacons = [ (nickname, locid.upper(), description, url_for('edit_beacon', locid=locid.lower()))
                     for nickname, locid, description in c.fetchall() ]
-        return render_template("beacons.html", beacons=beacons)
+        return render_template('beacons.html', beacons=beacons)
 
-@app.route('/<locid>/settings')
-@cookie_auth()
-def beacon_settings(locid):
-    locid = locid.lower()
-
-    if g.uid != ROOT_UID and g.locid != locid:
-        return redirect(url_for('login', locid=locid))
-
-    return 'TODO' #TODO
-
-@app.route('/beacons/new')
+@app.route('/beacons/new', methods=['GET', 'POST'])
 @cookie_auth(allow_uids=[ROOT_UID])
 def new_beacon():
-    return 'TODO' #TODO
 
-if __name__ == "__main__":
+    # create form from defaults on GET or from request.form data on POST
+    form = forms.Beacon()
+
+    # if this is a POST request and the form validates ok
+    if form.validate_on_submit():
+        m = form.into_db()
+
+        # all new beacons need a new secret
+        m['secret'] = random_token(settings.plivo_url_secret_length)
+
+        flash('Beacon created', 'info')
+        flash(request.url_root.rstrip('/') + url_for('sms', locid=m['locid'], secret=m['secret']), 'new_secret')
+
+        # store the new beacon in the database and show an edit form
+        try:
+            insert_into('beacons', **m)
+            return redirect(url_for('edit_beacon', locid=m['locid']))
+        except:
+            pass
+
+    # if validation failed, inform the user
+    for field, errors in form.errors.items():
+        for error in errors:
+            flash("Error in {}: {}".format(getattr(form, field).label.text, error))
+
+    # if this is a GET or failed POST, try again
+    return render_template('beacon_form.html',
+            verb='Create',
+            form=form,
+            post_to=url_for('new_beacon'))
+
+@app.route('/<locid>/settings', methods=['GET', 'POST'])
+@cookie_auth()
+def edit_beacon(locid):
+    if g.uid != ROOT_UID and g.locid != locid:
+        return forbidden()
+
+    # TODO what happens if the url is /root/settings?
+
+    # on GET, populate the blank form with current settings
+    if request.method == 'GET':
+        try:
+            m = get_from('beacons', forms.Beacon().into_db().keys(), 'locid = %s', (locid))
+            form = forms.Beacon.from_db(m)
+        except:
+            return not_found()
+
+    # on POST, populate the form with request.form data
+    else:
+        form = forms.Beacon()
+
+    if form.validate_on_submit():
+        m = form.into_db()
+
+        try:
+            update('beacons', **m)
+            flash('Beacon updated', 'info')
+            if m['secret']:
+                flash(request.url_root.rstrip('/') + url_for('sms', locid=m['locid'], secret=m['secret']), 'new_secret')
+            return redirect(url_for('edit_beacon', locid=m['locid']))
+
+        except:
+            pass
+
+    # if validation failed, inform the user
+    for field, errors in form.errors.items():
+        for error in errors:
+            flash("Error in {}: {}".format(getattr(form, field).label.text, error))
+
+    return render_template('beacon_form.html',
+            verb='Edit',
+            form=form,
+            post_to=url_for('edit_beacon', locid=locid))
+
+@app.route('/<locid>', methods=['DELETE'])
+@cookie_auth(allow_uids=[ROOT_UID])
+def delete_beacon(locid):
+
+    with get_db().cursor() as c:
+        c.execute('delete from `beacons` where locid = %s', (locid))
+    get_db().commit()
+
+    return redirect(url_for('beacons'))
+
+@app.route('/<locid>/sms/<secret>')
+def sms(locid, secret):
+    return 'TODO' # TODO
+
+if __name__ == '__main__':
     app.run(port=5000, debug=True)

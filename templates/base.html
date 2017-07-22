@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head>
+    <title>smsbeacon admin</title>
+</head>
+<body>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        <ul class=flashes>
+        {% for category, message in messages %}
+            <li class="{{ category }}">
+            {%- if category == 'new_secret' -%}
+                Your Plivo secret has been updated. Please update the URL in Plivo to: <code>{{ message }}</code>
+            {%- else -%}
+                {{ message }}
+            {%- endif -%}
+            </li>
+        {% endfor %}
+        </ul>
+    {% endif %}
+{% endwith %}
+
+{% block content %}
+{% endblock %}

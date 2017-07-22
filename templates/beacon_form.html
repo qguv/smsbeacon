@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h1>{{ verb }} Beacon</h1>
+
+{% if new_secret is not none %}
+{% endif %}
+
+<form action="{{ post_to }}" method="post">
+
+{{ form.csrf_token }}
+
+{{ form.telno.label }} {{ form.telno }} <br />
+{{ form.nickname.label }} {{ form.nickname }} <br />
+{{ form.description.label }} {{ form.description }} <br />
+{{ form.locid.label }} {{ form.locid }} <br />
+
+{{ form.plivo_id.label }} {{ form.plivo_id }} <br />
+{{ form.plivo_token.label }} {{ form.plivo_token }} <br />
+
+{{ form.autosend.label }} {{ form.autosend }} <br />
+{{ form.autosend_delay_minutes.label }} {{ form.autosend_delay_minutes }} <br />
+
+{{ form.prune.label }} {{ form.prune }} <br />
+{{ form.prune_delay_hours.label }} {{ form.prune_delay_hours }} <br />
+
+{{ form.token_lifetime_minutes.label }} {{ form.token_lifetime_minutes }} <br />
+
+{% if verb != 'Create' %}
+{{ form.new_secret.label }} {{ form.new_secret }} <br />
+{% endif %}
+
+<input type="reset" value="Reset" />
+<input type="submit" value="Submit" />
+</form>
+
+{% endblock %}

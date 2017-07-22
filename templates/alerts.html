@@ -1,6 +1,5 @@
-<!doctype html>
-<html>
-<body>
+{% extends 'base.html' %}
+{% block content %}
 
 <p>
 This is {{ nickname }} for {{ locid }}.
@@ -13,5 +12,4 @@ This is {{ nickname }} for {{ locid }}.
 There {{ 'is' if count == 1 else 'are' }} {{ count }} {{ 'alert' if count == 1 else 'alerts'}}.
 </p>
 
-</body>
-</html>
+{% endblock %}

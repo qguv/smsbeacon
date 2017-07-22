@@ -1,6 +1,5 @@
-<!doctype html>
-<html>
-<body>
+{% extends 'base.html' %}
+{% block content %}
 
 <h1>{{ '' if beacons else 'No ' }}Active Beacons</h1>
 
@@ -16,5 +15,4 @@
 <br />
 <a href="{{ url_for('logout', locid='root') }}">Log out</a>
 
-</body>
-</html>
+{% endblock %}
