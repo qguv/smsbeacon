@@ -28,10 +28,9 @@ create table `beacons` (
   `prune_delay` int unsigned null,
 
   /* token_lifetime:
-   *   null -> tokens are valid forever
    *   0    -> tokens are never accepted
    *   >0   -> tokens are valid for this many seconds */
-  `token_lifetime` int unsigned null
+  `token_lifetime` int unsigned not null
 );
 
 drop table if exists `alerts`;

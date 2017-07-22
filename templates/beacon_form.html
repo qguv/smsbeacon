@@ -8,7 +8,7 @@
 
 <form action="{{ post_to }}" method="post">
 
-{{ form.csrf_token }}
+{{ form.hidden_tag() }}
 
 {{ form.telno.label }} {{ form.telno }} <br />
 {{ form.nickname.label }} {{ form.nickname }} <br />

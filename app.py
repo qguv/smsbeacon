@@ -2,7 +2,7 @@
 
 import settings
 import forms
-from utils import random_token, all_of_them, IntEnum
+from utils import random_token, all_of_them, IntEnum, call_some
 
 from datetime import datetime
 from functools import wraps
@@ -65,10 +65,12 @@ def not_found():
     return make_response(('Not Found :(', 404, {}))
 
 def insert_into(table, **kwargs):
-    kwargs = { k: str(v) for k, v in kwargs.items() if v is not None }
-    items = kwargs.items()
-    keys, values = zip(*items)
-    params = ', '.join(['%s'] * len(kwargs))
+    keys, values = zip(*kwargs.items())
+
+    # get string representation, but leave None alone
+    values = list(map(lambda v: call_some(v, str), values))
+
+    params = ', '.join(['%s'] * len(keys))
     columns = ', '.join('`{}`'.format(k) for k in keys)
 
     with get_db().cursor() as c:
@@ -76,19 +78,20 @@ def insert_into(table, **kwargs):
     get_db().commit()
 
 def update(table, **kwargs):
-    items = kwargs.items()
-    updates = ', '.join( '`{}` = %s'.format(k) for k, v in items if v is not None )
-    values = [ str(v) for _, v in items if v is not None ]
+    keys, values = zip(*kwargs.items())
+
+    # get string representation, but leave None alone
+    values = list(map(lambda v: call_some(v, str), values))
+
+    updates = ', '.join( '`{}` = %s'.format(k) for k in keys )
 
     with get_db().cursor() as c:
-        c.execute('update `{}` set {}'.format(table, updates), (values))
+        c.execute('update `{}` set {}'.format(table, updates), values)
     get_db().commit()
 
 def get_from(table, fields, where_clause, params=()):
-    sql = 'select {} from `{}` where {}'.format(
-            ', '.join( '`{}`'.format(field) for field in fields ),
-            table,
-            where_clause)
+    columns = ', '.join( '`{}`'.format(field) for field in fields )
+    sql = 'select {} from `{}` where {}'.format(columns, table, where_clause)
 
     with get_db().cursor() as c:
         c.execute(sql, params)
@@ -414,9 +417,6 @@ def new_beacon():
     if form.validate_on_submit():
         m = form.into_db()
 
-        # all new beacons need a new secret
-        m['secret'] = random_token(settings.plivo_url_secret_length)
-
         flash('Beacon created', 'info')
         flash(request.url_root.rstrip('/') + url_for('sms', locid=m['locid'], secret=m['secret']), 'new_secret')
 
@@ -464,7 +464,7 @@ def edit_beacon(locid):
         try:
             update('beacons', **m)
             flash('Beacon updated', 'info')
-            if m['secret']:
+            if form.new_secret.data:
                 flash(request.url_root.rstrip('/') + url_for('sms', locid=m['locid'], secret=m['secret']), 'new_secret')
             return redirect(url_for('edit_beacon', locid=m['locid']))
 

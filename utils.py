@@ -15,7 +15,7 @@ class IntEnum(_IntEnum):
     def __str__(self, *args, **kwargs):
         return str(int(self))
 
-def run_some(x, f):
+def call_some(x, f):
     if x is None:
         return
     return f(x)

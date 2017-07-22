@@ -1,10 +1,13 @@
 from flask_wtf import FlaskForm
-from wtforms import BooleanField, StringField, TextAreaField, IntegerField
+from wtforms import BooleanField, StringField, TextAreaField, IntegerField, HiddenField
 from wtforms.validators import DataRequired, InputRequired, Optional, Length, ValidationError, NumberRange
 from werkzeug.datastructures import MultiDict
 
+# fix dumb checkbox bug: https://stackoverflow.com/a/38102472
+BooleanField.false_values = {False, 'false', ''}
+
 import settings
-from utils import random_token, run_some
+from utils import random_token, call_some
 
 class InputRequiredIf():
     '''a wtforms validator which makes a field required if a given different
@@ -45,6 +48,8 @@ class Beacon(FlaskForm):
     token_lifetime_minutes = IntegerField("Automatically log out after how many minutes?", [DataRequired(), NumberRange(min=1)], default=5)
     new_secret = BooleanField("Recalculate plivo secret?", default=False)
 
+    secret = HiddenField()
+
     # DB MODEL TO FORM
 
     @classmethod
@@ -59,8 +64,14 @@ class Beacon(FlaskForm):
         if d['prune']:
             d['prune_delay_hours'] = d['prune_delay'] // 360
 
+        d['token_lifetime_minutes'] = d['token_lifetime'] // 60
+
         d['locid'] = d['locid']
 
+        from pprint import pprint; pprint(d) # DEBUG
+        r = cls(MultiDict(d))
+        print(r.autosend.data)
+        print(r.prune.data)
         return cls(MultiDict(d))
 
     # FORM TO DB MODEL
@@ -72,10 +83,10 @@ class Beacon(FlaskForm):
             telno = self.telno.data, # TODO normalize
             nickname = self.nickname.data,
             description = self.description.data,
-            locid = run_some(self.locid.data, lambda x: x.lower()),
+            locid = call_some(self.locid.data, lambda x: x.lower()),
             plivo_id = self.plivo_id.data,
             plivo_token = self.plivo_token.data,
             autosend_delay = int(self.autosend_delay_minutes.data) * 60 if self.autosend.data else None,
             prune_delay = int(self.prune_delay_hours.data) * 360 if self.prune.data else None,
             token_lifetime = int(self.token_lifetime_minutes.data) * 60,
-            secret = random_token(settings.plivo_url_secret_length) if self.new_secret.data else None)
+            secret = random_token(settings.plivo_url_secret_length) if self.new_secret.data or not self.secret.data else self.secret.data)
