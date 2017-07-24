@@ -6,6 +6,7 @@ from utils import random_token, all_of_them, IntEnum, call_some
 
 from datetime import datetime
 from functools import wraps
+from collections import Counter
 import pymysql
 
 from passlib.context import CryptContext
@@ -383,19 +384,21 @@ def alerts(locid):
     if g.uid != ROOT_UID and g.locid != locid:
         return redirect(url_for('login', locid=locid))
 
-    sql = '''select b.nickname, b.description
-             from beacons b left join alerts a
+    sql = '''select a.alert_type
+             from beacons b inner join alerts a
              on b.telno = a.beacon
              where b.locid=%s'''
 
     try:
         with get_db().cursor() as c:
             c.execute(sql, (locid))
-            nickname, b.description = c.fetchone()
+            alerts = c.fetchall()
+            stats = Counter(AlertType(alert[0]) for alert in alerts)
+            return render_template('alerts.html', alerts=alerts, stats=stats, AlertType=AlertType)
     except:
-        return not_found()
+        import traceback; traceback.print_exc() #DEBUG
+        return 'No alerts!'
 
-    return render_template('alerts.html', count=c.rowcount, nickname=nickname, locid=locid)
 
 @app.route('/beacons')
 @cookie_auth(allow_uids=[ROOT_UID])

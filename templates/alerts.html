@@ -2,14 +2,17 @@
 {% block content %}
 
 <p>
-This is {{ nickname }} for {{ locid }}.
-{{ description }}
+There {{ 'is' if alerts | length == 1 else 'are' }} {{ alerts | length }} {{ 'alert' if alerts | length == 1 else 'alerts'}}:
 </p>
 
-<hr />
+<ul>
 
-<p>
-There {{ 'is' if count == 1 else 'are' }} {{ count }} {{ 'alert' if count == 1 else 'alerts'}}.
-</p>
+{% if stats[AlertType.REPORT_PENDING] %}
+<li>{{ stats[AlertType.REPORT_PENDING] }} pending {{ 'alert' if stats[AlertType.REPORT_PENDING] == 1 else 'alerts'}}</li>
+{% endif %}
+
+{% if stats[AlertType.REPORT_RELAYED] %}
+<li>{{ stats[AlertType.REPORT_RELAYED] }} relayed {{ 'alert' if stats[AlertType.REPORT_RELAYED] == 1 else 'alerts'}}</li>
+{% endif %}
 
 {% endblock %}
