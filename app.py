@@ -486,16 +486,6 @@ def edit_beacon(locid):
             form=form,
             post_to=url_for('edit_beacon', locid=locid))
 
-@app.route('/<locid>', methods=['DELETE'])
-@cookie_auth(allow_uids=[ROOT_UID])
-def delete_beacon(locid):
-
-    with get_db().cursor() as c:
-        c.execute('delete from `beacons` where locid = %s', (locid))
-    get_db().commit()
-
-    return redirect(url_for('beacons'))
-
 @app.route('/<locid>/sms/<secret>')
 def sms(locid, secret):
     return 'TODO' # TODO
