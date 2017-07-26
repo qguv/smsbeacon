@@ -369,6 +369,7 @@ def autologin(locid, uid, token):
 @app.route('/root', methods=['GET', 'POST'])
 @cookie_auth(allow_uids=[ROOT_UID])
 def root():
+    # TODO: merge with settings() route
     if request.method == 'GET':
         force_password_reset = not root_password_set()
         if force_password_reset:
@@ -433,7 +434,7 @@ def alerts(locid):
             alerts = [ alert for alert, in c.fetchall() ]
             stats = Counter(AlertType(alert) for alert in alerts)
             return render_template('alerts.html',
-                    locid=locid.upper(),
+                    locid=locid,
                     alerts=alerts,
                     stats=stats)
     except:
@@ -521,19 +522,19 @@ def settings(locid):
 
 @app.route('/<locid>/sms/<secret>')
 def sms(locid, secret):
-    return 'TODO' # TODO
+    return render_template('todo.html', locid=locid) # TODO
 
 @app.route('/<locid>/subscribers')
 def subscribers(locid):
-    return 'TODO' # TODO
+    return render_template('todo.html', locid=locid) # TODO
 
 @app.route('/<locid>/admins')
 def admins(locid):
-    return 'TODO' # TODO
+    return render_template('todo.html', locid=locid) # TODO
 
 @app.route('/<locid>/bans')
 def bans(locid):
-    return 'TODO' # TODO
+    return render_template('todo.html', locid=locid) # TODO
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
