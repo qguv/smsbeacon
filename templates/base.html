@@ -18,8 +18,8 @@
 <nav>
     <ul>
         <li>{{ beacon_nickname(locid) }} {{ locid }}</li>
-        {% for page in 'alerts subscribers admins bans settings'.split() %}
-            <li><a href="{{ url_for(page, locid=locid) }}">{{ page | capitalize }}</a></li>
+        {% for page in 'alerts, subscribers, admins, bans, settings, log out'.split(', ') %}
+            <li><a href="{{ url_for(page.replace(' ', ''), locid=locid) }}">{{ page | capitalize }}</a></li>
         {% endfor %}
     </ul>
 </nav>
