@@ -1,4 +1,11 @@
 {% extends 'base.html' %}
+
+{% block menu %}
+{% if locid is defined %}
+{{ super() }}
+{% endif %}
+{% endblock menu %}
+
 {% block content %}
 
 <h1>{{ verb }} Beacon</h1>
@@ -26,7 +33,8 @@
 
 {{ form.token_lifetime_minutes.label }} {{ form.token_lifetime_minutes }} <br />
 
-{% if verb != 'Create' %}
+{# only allow a new secret to be requested if we're editing an existing beacon #}
+{% if locid is defined %}
 {{ form.new_secret.label }} {{ form.new_secret }} <br />
 {% endif %}
 

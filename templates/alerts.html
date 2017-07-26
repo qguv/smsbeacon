@@ -1,12 +1,6 @@
 {% extends 'base.html' %}
 {% block content %}
 
-<h1>{{ nickname }} for {{ locid }}</h1>
-
-<ul>
-<li><a href="{{ edit_url }}">Change settings</a></li>
-</ul>
-
 <p>
 There {{ 'is' if alerts | length == 1 else 'are' }} {{ alerts | length }} {{ 'alert' if alerts | length == 1 else 'alerts'}}:
 </p>

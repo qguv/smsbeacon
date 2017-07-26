@@ -1,4 +1,8 @@
 {% extends 'base.html' %}
+
+{% block menu %}
+{% endblock menu %}
+
 {% block content %}
 
 <form action="{{ url_for('login', locid=locid) }}" method="post" style="display: hidden;">

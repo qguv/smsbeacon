@@ -1,9 +1,29 @@
 <!doctype html>
 <html>
 <head>
-    <title>smsbeacon admin</title>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='base.css') }}" />
+
+    {% if locid is defined %}
+        <title>{{ beacon_nickname(locid) }} {{ locid }} admin</title>
+    {% else %}
+        <title>smsbeacon admin</title>
+    {% endif %}
+
+    <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
 <body>
+
+{% block menu %}
+<nav>
+    <ul>
+        <li>{{ beacon_nickname(locid) }} {{ locid }}</li>
+        {% for page in 'alerts subscribers admins bans settings'.split() %}
+            <li><a href="{{ url_for(page, locid=locid) }}">{{ page | capitalize }}</a></li>
+        {% endfor %}
+    </ul>
+</nav>
+{% endblock menu %}
 
 {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}

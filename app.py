@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import settings
+import settings as config
 import forms
 from utils import random_token, all_of_them, IntEnum, call_some
 
@@ -13,7 +13,7 @@ from passlib.context import CryptContext
 crypto = CryptContext(schemes=['pbkdf2_sha256'])
 
 #import plivo
-#p = plivo.RestAPI(settings.plivo_id, settings.plivo_token)
+#p = plivo.RestAPI(config.plivo_id, config.plivo_token)
 
 # BACKEND SETUP
 
@@ -21,12 +21,12 @@ from flask import Flask, request, render_template, g, url_for, redirect, \
     make_response, get_flashed_messages, flash
 from flask_wtf.csrf import CSRFProtect
 app = Flask(__name__)
-app.secret_key = settings.flask_secret_key
+app.secret_key = config.flask_secret_key
 csrfp = CSRFProtect(app)
 
 def get_db():
     if not hasattr(g, 'db'):
-        g.db = pymysql.connect(**settings.database)
+        g.db = pymysql.connect(**config.database)
     return g.db
 
 @app.teardown_appcontext
@@ -134,7 +134,8 @@ def user_uid(locid, telno) -> 'uid' or Exception:
              where b.locid=%s and u.telno=%s'''
 
     with get_db().cursor() as c:
-        return c.execute(sql, (locid, telno)).findone()[0]
+        c.execute(sql, (locid, telno))
+        return c.fetchone()[0]
 
 def user_telno(uid) -> 'telno' or Exception:
     if uid == ROOT_UID:
@@ -145,7 +146,8 @@ def user_telno(uid) -> 'telno' or Exception:
              where id=%s'''
 
     with get_db().cursor() as c:
-        return c.execute(sql, (uid)).findone()[0]
+        c.execute(sql, (uid))
+        return c.fetchone()[0]
 
 def user_role(uid) -> Role or Exception:
     if uid == ROOT_UID:
@@ -156,11 +158,24 @@ def user_role(uid) -> Role or Exception:
              where id=%s'''
 
     with get_db().cursor() as c:
-        return Role(c.execute(sql, (uid)).findone()[0])
+        c.execute(sql, (uid))
+        return Role(c.fetchone()[0])
+
+def beacon_nickname(locid) -> str:
+    sql = '''select nickname
+             from beacons
+             where locid = %s'''
+
+    try:
+        with get_db().cursor() as c:
+            c.execute(sql, (locid))
+            return c.fetchone()[0]
+    except:
+        return ''
 
 def replace_token(uid) -> 'token':
     if uid == ROOT_UID:
-        token_lifetime = settings.root_token_lifetime
+        token_lifetime = config.root_token_lifetime
     else:
         token_lifetime = user_token_lifetime()
 
@@ -297,7 +312,15 @@ def cookie_auth(allow_uids=all_of_them, allow_roles=[Role.ADMIN]) -> 'decorator'
         return wrapped
     return wrapper
 
-# CLI
+# APP SETUP
+
+@app.context_processor
+def beacon_name():
+    return dict(
+        AlertType=AlertType,
+        Role=Role,
+        beacon_nickname=beacon_nickname,
+        ROOT_UID=ROOT_UID)
 
 @app.cli.command()
 def initdb():
@@ -308,7 +331,7 @@ def initdb():
         beacon='root',
         role=Role.ADMIN,
         thash=crypto.hash(root_token),
-        token_expires= now + settings.root_token_lifetime,
+        token_expires= now + config.root_token_lifetime,
         created=now)
     print("Run the app with ./app.py, then set the root password at http://localhost:5000/root/login/" + root_token)
 
@@ -317,6 +340,8 @@ def initdb():
 @app.route('/test')
 def test():
     return 'OK'
+
+## NO INTERACTION
 
 @app.route('/<locid>/logout')
 def logout(locid):
@@ -338,6 +363,32 @@ def autologin(locid, uid, token):
     except:
         print("URL auth failed") # DEBUG
         return redirect(url_for('login', locid=locid))
+
+## ROOT-ONLY
+
+@app.route('/root', methods=['GET', 'POST'])
+@cookie_auth(allow_uids=[ROOT_UID])
+def root():
+    if request.method == 'GET':
+        force_password_reset = not root_password_set()
+        if force_password_reset:
+            flash("Welcome! Please set the root password.", 'info')
+        return render_template('root.html', force_password_reset=force_password_reset)
+
+    password = request.form['password']
+    change_password(ROOT_UID, password)
+    return redirect(url_for('root'))
+
+@app.route('/beacons')
+@cookie_auth(allow_uids=[ROOT_UID])
+def beacons():
+    with get_db().cursor() as c:
+        c.execute('select `nickname`, `locid`, `description` from `beacons`')
+        beacons = [ (nickname, locid.upper(), description, url_for('settings', locid=locid.lower()))
+                    for nickname, locid, description in c.fetchall() ]
+        return render_template('beacons.html', beacons=beacons)
+
+## ROOT-ONLY
 
 @app.route('/<locid>/login', methods=['GET', 'POST'])
 def login(locid):
@@ -364,19 +415,6 @@ def login(locid):
     except:
         return redirect(url_for('login', locid=locid))
 
-@app.route('/root', methods=['GET', 'POST'])
-@cookie_auth(allow_uids=[ROOT_UID])
-def root():
-    if request.method == 'GET':
-        force_password_reset = not root_password_set()
-        if force_password_reset:
-            flash("Welcome! Please set the root password.", 'info')
-        return render_template('root.html', force_password_reset=force_password_reset)
-
-    password = request.form['password']
-    change_password(ROOT_UID, password)
-    return redirect(url_for('root'))
-
 @app.route('/<locid>/alerts')
 @cookie_auth()
 def alerts(locid):
@@ -402,22 +440,11 @@ def alerts(locid):
                     locid=locid.upper(),
                     nickname=nickname,
                     alerts=alerts,
-                    stats=stats,
-                    edit_url=url_for('edit_beacon', locid=locid.lower()),
-                    AlertType=AlertType)
+                    stats=stats)
     except:
         import traceback; traceback.print_exc() #DEBUG
         return 'No alerts!'
 
-
-@app.route('/beacons')
-@cookie_auth(allow_uids=[ROOT_UID])
-def beacons():
-    with get_db().cursor() as c:
-        c.execute('select `nickname`, `locid`, `description` from `beacons`')
-        beacons = [ (nickname, locid.upper(), description, url_for('edit_beacon', locid=locid.lower()))
-                    for nickname, locid, description in c.fetchall() ]
-        return render_template('beacons.html', beacons=beacons)
 
 @app.route('/beacons/new', methods=['GET', 'POST'])
 @cookie_auth(allow_uids=[ROOT_UID])
@@ -435,7 +462,7 @@ def new_beacon():
             insert_into('beacons', **m)
             flash("Beacon created", 'info')
             flash(request.url_root.rstrip('/') + url_for('sms', locid=m['locid'], secret=m['secret']), 'new_secret')
-            return redirect(url_for('edit_beacon', locid=m['locid']))
+            return redirect(url_for('settings', locid=m['locid']))
         except:
             flash("Couldn't create beacon")
             import traceback; traceback.print_exc() #DEBUG
@@ -454,7 +481,7 @@ def new_beacon():
 
 @app.route('/<locid>/settings', methods=['GET', 'POST'])
 @cookie_auth()
-def edit_beacon(locid):
+def settings(locid):
     if g.uid != ROOT_UID and g.locid != locid:
         return forbidden()
 
@@ -481,7 +508,7 @@ def edit_beacon(locid):
             flash('Beacon updated', 'info')
             if form.new_secret.data:
                 flash(request.url_root.rstrip('/') + url_for('sms', locid=m['locid'], secret=m['secret']), 'new_secret')
-            return redirect(url_for('edit_beacon', locid=m['locid']))
+            return redirect(url_for('settings', locid=m['locid']))
 
         except:
             pass
@@ -492,12 +519,25 @@ def edit_beacon(locid):
             flash("{} {}".format(getattr(form, field).label.text, error), 'validation')
 
     return render_template('beacon_form.html',
+            locid=locid,
             verb='Edit',
             form=form,
-            post_to=url_for('edit_beacon', locid=locid))
+            post_to=url_for('settings', locid=locid))
 
 @app.route('/<locid>/sms/<secret>')
 def sms(locid, secret):
+    return 'TODO' # TODO
+
+@app.route('/<locid>/subscribers')
+def subscribers(locid):
+    return 'TODO' # TODO
+
+@app.route('/<locid>/admins')
+def admins(locid):
+    return 'TODO' # TODO
+
+@app.route('/<locid>/bans')
+def bans(locid):
     return 'TODO' # TODO
 
 if __name__ == '__main__':
