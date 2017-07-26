@@ -384,17 +384,27 @@ def alerts(locid):
     if g.uid != ROOT_UID and g.locid != locid:
         return redirect(url_for('login', locid=locid))
 
-    sql = '''select a.alert_type
-             from beacons b inner join alerts a
-             on b.telno = a.beacon
-             where b.locid=%s'''
 
     try:
         with get_db().cursor() as c:
+            c.execute('select nickname from beacons where locid=%s')
+            nickname = c.fetchone()
+
+            sql = '''select a.alert_type
+                     from beacons b inner join alerts a
+                     on b.telno = a.beacon
+                     where b.locid=%s'''
+
             c.execute(sql, (locid))
             alerts = c.fetchall()
             stats = Counter(AlertType(alert[0]) for alert in alerts)
-            return render_template('alerts.html', alerts=alerts, stats=stats, AlertType=AlertType)
+            return render_template('alerts.html',
+                    locid=locid.upper(),
+                    nickname=nickname,
+                    alerts=alerts,
+                    stats=stats,
+                    edit_url=url_for('edit_beacon', locid=locid.lower()),
+                    AlertType=AlertType)
     except:
         import traceback; traceback.print_exc() #DEBUG
         return 'No alerts!'
