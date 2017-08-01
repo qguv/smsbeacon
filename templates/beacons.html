@@ -10,7 +10,7 @@
 {% if beacons %}
 <ul>
 {% for nickname, locid, description, url in beacons %}
-    <a href="{{ url }}">{{ nickname }} in {{ locid }}</a>
+    <li><a href="{{ url }}">{{ nickname }} in {{ locid }}</a></li>
 {% endfor %}
 </ul>
 {% endif %}
