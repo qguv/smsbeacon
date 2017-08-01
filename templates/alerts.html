@@ -1,18 +1,19 @@
 {% extends 'base.html' %}
 {% block content %}
 
-<p>
-There {{ 'is' if alerts | length == 1 else 'are' }} {{ alerts | length }} {{ 'alert' if alerts | length == 1 else 'alerts'}}.
-</p>
+<form id="alert_form" action="{{ url_for('new_alert', locid=locid) }}" method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+<textarea name="text" autofocus></textarea>
+<input type="submit" value="Send immediately" />
+</form>
 
-<ul>
+<h3>Pending</h3>
+{# TODO: add examples #}
 
-{% if stats[AlertType.REPORT_PENDING] %}
-<li>{{ stats[AlertType.REPORT_PENDING] }} pending {{ 'alert' if stats[AlertType.REPORT_PENDING] == 1 else 'alerts'}}</li>
-{% endif %}
+<h3>Sent recently</h3>
+{# TODO: add examples #}
 
-{% if stats[AlertType.REPORT_RELAYED] %}
-<li>{{ stats[AlertType.REPORT_RELAYED] }} relayed {{ 'alert' if stats[AlertType.REPORT_RELAYED] == 1 else 'alerts'}}</li>
-{% endif %}
+<h3>Rejected recently</h3>
+{# TODO: add examples #}
 
 {% endblock %}

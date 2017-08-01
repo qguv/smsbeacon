@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block content %}
+
+{% if users %}
+<ul>
+{% endif %}
+
+{% for telno in users %}
+    <li>{{ telno }}</li>
+{% endfor %}
+
+{% if users %}
+</ul>
+{% endif %}
+
+{% endblock %}

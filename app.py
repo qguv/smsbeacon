@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import settings as config
+import config
 import forms
 from utils import random_token, all_of_them, IntEnum, call_some
 
@@ -15,8 +15,6 @@ crypto = CryptContext(schemes=['pbkdf2_sha256'])
 #import plivo
 #p = plivo.RestAPI(config.plivo_id, config.plivo_token)
 
-# BACKEND SETUP
-
 from flask import Flask, request, render_template, g, url_for, redirect, \
     make_response, get_flashed_messages, flash
 from flask_wtf.csrf import CSRFProtect
@@ -24,19 +22,9 @@ app = Flask(__name__)
 app.secret_key = config.flask_secret_key
 csrfp = CSRFProtect(app)
 
-def get_db():
-    if not hasattr(g, 'db'):
-        g.db = pymysql.connect(**config.database)
-    return g.db
+ROOT_UID = 1
 
-@app.teardown_appcontext
-def close_db(error):
-    if hasattr(g, 'db'):
-        g.db.close()
-
-# DB ENUMS
-
-class Role(IntEnum):
+class UserType(IntEnum):
     NOT_SUBSCRIBED = 0
     SUBSCRIBED = 1
     ADMIN = 2
@@ -49,10 +37,6 @@ class AlertType(IntEnum):
    REPORT_REJECTED = 2
    WALLOPS_RELAYED = 3
 
-# HELPERS
-
-ROOT_UID = 1
-
 def bad_request():
     return make_response(('Bad request :(', 400, {}))
 
@@ -64,6 +48,16 @@ def forbidden():
 
 def not_found():
     return make_response(('Not Found :(', 404, {}))
+
+def get_db():
+    if not hasattr(g, 'db'):
+        g.db = pymysql.connect(**config.database)
+    return g.db
+
+@app.teardown_appcontext
+def close_db(error):
+    if hasattr(g, 'db'):
+        g.db.close()
 
 def insert_into(table, **kwargs):
     keys, values = zip(*kwargs.items())
@@ -100,16 +94,6 @@ def get_from(table, fields, where_clause, params=()):
         if result is None:
             raise Exception('not found')
         return dict(zip(fields, result))
-
-def user_token_lifetime(uid):
-    sql = '''select b.token_lifetime
-             from beacon b inner join users u
-             on b.telno = u.beacon
-             where u.id=%s'''
-
-    with get_db().cursor() as c:
-        c.execute(sql, (uid))
-        return c.fetchone()[0]
 
 def user_locid(uid) -> 'locid' or Exception:
     if uid == ROOT_UID:
@@ -149,17 +133,31 @@ def user_telno(uid) -> 'telno' or Exception:
         c.execute(sql, (uid))
         return c.fetchone()[0]
 
-def user_role(uid) -> Role or Exception:
+def user_type(uid) -> UserType or Exception:
     if uid == ROOT_UID:
-        return Role.ADMIN
+        return UserType.ADMIN
 
-    sql = '''select role
+    sql = '''select user_type
              from users u
              where id=%s'''
 
     with get_db().cursor() as c:
         c.execute(sql, (uid))
-        return Role(c.fetchone()[0])
+        return UserType(c.fetchone()[0])
+
+def users_of_type(locid, *user_types) -> "user telno":
+    conditions = " or ".join([ "u.user_type = {}".format(int(user_type))
+                               for user_type in user_types ])
+    sql = '''select u.telno
+             from users u inner join beacons b
+             on u.beacon = b.telno
+             where b.locid = %s
+             and ({})'''.format(conditions)
+
+    with get_db().cursor() as c:
+        c.execute(sql, (locid))
+
+    return [ u[0] for u in c.fetchall() ]
 
 def beacon_nickname(locid) -> str:
     sql = '''select nickname
@@ -172,6 +170,16 @@ def beacon_nickname(locid) -> str:
             return c.fetchone()[0]
     except:
         return ''
+
+def user_token_lifetime(uid):
+    sql = '''select b.token_lifetime
+             from beacon b inner join users u
+             on b.telno = u.beacon
+             where u.id=%s'''
+
+    with get_db().cursor() as c:
+        c.execute(sql, (uid))
+        return c.fetchone()[0]
 
 def replace_token(uid) -> 'token':
     if uid == ROOT_UID:
@@ -263,7 +271,7 @@ def change_password(uid, password) -> None or Exception:
         if not c.rowcount:
             raise Exception("no such user")
 
-def cookie_auth(allow_uids=all_of_them, allow_roles=[Role.ADMIN]) -> 'decorator':
+def cookie_auth(allow_uids=all_of_them, allow_user_types=[UserType.ADMIN]) -> 'decorator':
     def wrapper(f):
         @wraps(f)
         def wrapped(*args, **kwargs):
@@ -293,12 +301,12 @@ def cookie_auth(allow_uids=all_of_them, allow_roles=[Role.ADMIN]) -> 'decorator'
                 return beacon_login
 
             try:
-                g.role = user_role(g.uid) # TODO: combine
-                if g.role not in allow_roles:
-                    print("role not allowed")
+                g.user_type = user_type(g.uid) # TODO: combine
+                if g.user_type not in allow_user_types:
+                    print("user type not allowed")
                     return beacon_login
             except:
-                print("couldn't get role for user")
+                print("couldn't get type for user")
                 return beacon_login
 
             try:
@@ -318,22 +326,21 @@ def cookie_auth(allow_uids=all_of_them, allow_roles=[Role.ADMIN]) -> 'decorator'
 def beacon_name():
     return dict(
         AlertType=AlertType,
-        Role=Role,
+        UserType=UserType,
         beacon_nickname=beacon_nickname,
         ROOT_UID=ROOT_UID)
 
-@app.cli.command()
-def initdb():
+def make_root_user():
     root_token = random_token()
     now = int(datetime.now().timestamp())
     insert_into('users',
         telno='root',
         beacon='root',
-        role=Role.ADMIN,
+        user_type=UserType.ADMIN,
         thash=crypto.hash(root_token),
         token_expires= now + config.root_token_lifetime,
         created=now)
-    print("Run the app with ./app.py, then set the root password at http://localhost:5000/root/login/" + root_token)
+    print("Root user initialized. Run the app with ./app.py, then set the root password at:\n  http://localhost:5000/root/login/" + root_token)
 
 # ROUTES
 
@@ -432,15 +439,21 @@ def alerts(locid):
 
             c.execute(sql, (locid))
             alerts = [ alert for alert, in c.fetchall() ]
-            stats = Counter(AlertType(alert) for alert in alerts)
             return render_template('alerts.html',
                     locid=locid,
-                    alerts=alerts,
-                    stats=stats)
+                    alerts=alerts)
     except:
         import traceback; traceback.print_exc() #DEBUG
         return 'No alerts!'
 
+@app.route('/<locid>/alerts/new', methods=['POST'])
+@cookie_auth()
+def new_alert(locid):
+    locid = locid.lower()
+    if g.uid != ROOT_UID and g.locid != locid:
+        return redirect(url_for('login', locid=locid))
+
+    return render_template('todo.html', locid=locid) # TODO post a new alert
 
 @app.route('/beacons/new', methods=['GET', 'POST'])
 @cookie_auth(allow_uids=[ROOT_UID])
@@ -526,15 +539,18 @@ def sms(locid, secret):
 
 @app.route('/<locid>/subscribers')
 def subscribers(locid):
-    return render_template('todo.html', locid=locid) # TODO
+    users = users_of_type(locid, UserType.SUBSCRIBED)
+    return render_template('users.html', users=users, title="Subscribers", locid=locid)
 
 @app.route('/<locid>/admins')
 def admins(locid):
-    return render_template('todo.html', locid=locid) # TODO
+    users = users_of_type(locid, UserType.ADMIN)
+    return render_template('users.html', users=users, title="Admins", locid=locid)
 
 @app.route('/<locid>/bans')
 def bans(locid):
-    return render_template('todo.html', locid=locid) # TODO
+    users = users_of_type(locid, UserType.BANNED_WASNT_SUBSCRIBED, UserType.BANNED_WAS_SUBSCRIBED)
+    return render_template('users.html', users=users, title="Banned numbers", locid=locid)
 
 if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+    app.run(port=config.port, debug=True)

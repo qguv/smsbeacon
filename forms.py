@@ -6,7 +6,7 @@ from werkzeug.datastructures import MultiDict
 # fix dumb checkbox bug: https://stackoverflow.com/a/38102472
 BooleanField.false_values = {False, 'false', ''}
 
-import settings
+import config
 from utils import random_token, call_some, normal_telno
 
 import string
@@ -100,4 +100,4 @@ class Beacon(FlaskForm):
             autosend_delay = int(self.autosend_delay_minutes.data) * 60 if self.autosend.data else None,
             prune_delay = int(self.prune_delay_hours.data) * 360 if self.prune.data else None,
             token_lifetime = int(self.token_lifetime_minutes.data) * 60,
-            secret = random_token(settings.plivo_url_secret_length) if self.new_secret.data or not self.secret.data else self.secret.data)
+            secret = random_token(config.plivo_url_secret_length) if self.new_secret.data or not self.secret.data else self.secret.data)

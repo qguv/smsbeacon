@@ -63,14 +63,14 @@ create table `users` (
   `beacon` varchar(16) not null,
   `telno` varchar(16) not null,
 
-  /* role:
+  /* user_type:
    * 0  -> not_subscribed
    * 1  -> subscribed
    * 2  -> admin
    * 3  -> banned_wasnt_subscribed
    * 4  -> banned_was_subscribed
    * >4 -> [reserved] */
-  `role` tinyint unsigned not null,
+  `user_type` tinyint unsigned not null,
 
   /* for an admin: how many reports has this admin rejected/relayed
    * for anyone else: how many of their reports have been rejected/relayed */
