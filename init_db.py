@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from settings import database
+from config import database
 from app import make_root_user
 
 from subprocess import check_call
