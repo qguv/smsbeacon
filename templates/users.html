@@ -5,8 +5,12 @@
 <ul>
 {% endif %}
 
-{% for telno in users %}
-    <li>{{ telno }}</li>
+{% for telno, nickname in users.items() %}
+    {% if nickname is not none %}
+        <li>{{ nickname }} ({{ telno }})</li>
+    {% else %}
+        <li>{{ telno }}</li>
+    {% endif %}
 {% endfor %}
 
 {% if users %}

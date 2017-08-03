@@ -62,6 +62,7 @@ create table `users` (
 
   `beacon` varchar(16) not null,
   `telno` varchar(16) not null,
+  `nickname` varchar(16) null,
 
   /* user_type:
    * 0  -> not_subscribed

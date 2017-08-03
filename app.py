@@ -2,7 +2,8 @@
 
 import config
 import forms
-from utils import random_token, all_of_them, IntEnum, call_some
+from db import Database
+from utils import random_token, all_of_them, IntEnum
 
 from datetime import datetime
 from functools import wraps
@@ -51,49 +52,13 @@ def not_found():
 
 def get_db():
     if not hasattr(g, 'db'):
-        g.db = pymysql.connect(**config.database)
+        g.db = Database()
     return g.db
 
 @app.teardown_appcontext
 def close_db(error):
     if hasattr(g, 'db'):
         g.db.close()
-
-def insert_into(table, **kwargs):
-    keys, values = zip(*kwargs.items())
-
-    # get string representation, but leave None alone
-    values = [ call_some(v, str) for v in values ]
-
-    params = ', '.join(['%s'] * len(keys))
-    columns = ', '.join('`{}`'.format(k) for k in keys)
-
-    with get_db().cursor() as c:
-        c.execute('insert into `{}` ({}) values ({})'.format(table, columns, params), values)
-    get_db().commit()
-
-def update(table, **kwargs):
-    keys, values = zip(*kwargs.items())
-
-    # get string representation, but leave None alone
-    values = list(map(lambda v: call_some(v, str), values))
-
-    updates = ', '.join( '`{}` = %s'.format(k) for k in keys )
-
-    with get_db().cursor() as c:
-        c.execute('update `{}` set {}'.format(table, updates), values)
-    get_db().commit()
-
-def get_from(table, fields, where_clause, params=()):
-    columns = ', '.join( '`{}`'.format(field) for field in fields )
-    sql = 'select {} from `{}` where {}'.format(columns, table, where_clause)
-
-    with get_db().cursor() as c:
-        c.execute(sql, params)
-        result = c.fetchone()
-        if result is None:
-            raise Exception('not found')
-        return dict(zip(fields, result))
 
 def user_locid(uid) -> 'locid' or Exception:
     if uid == ROOT_UID:
@@ -103,9 +68,7 @@ def user_locid(uid) -> 'locid' or Exception:
              from users u inner join beacon b
              where u.uid=%s'''
 
-    with get_db().cursor() as c:
-        c.execute(sql, (uid))
-        return c.fetchone()[0].lower()
+    return get_db().fetchone(sql, uid)[0].lower()
 
 def user_uid(locid, telno) -> 'uid' or Exception:
     locid = locid.lower()
@@ -117,9 +80,7 @@ def user_uid(locid, telno) -> 'uid' or Exception:
              on u.beacon = b.telno
              where b.locid=%s and u.telno=%s'''
 
-    with get_db().cursor() as c:
-        c.execute(sql, (locid, telno))
-        return c.fetchone()[0]
+    return get_db().fetchone(sql, locid, telno)[0]
 
 def user_telno(uid) -> 'telno' or Exception:
     if uid == ROOT_UID:
@@ -129,9 +90,7 @@ def user_telno(uid) -> 'telno' or Exception:
              from users u
              where id=%s'''
 
-    with get_db().cursor() as c:
-        c.execute(sql, (uid))
-        return c.fetchone()[0]
+    return get_db().fetchone(sql, uid)[0]
 
 def user_type(uid) -> UserType or Exception:
     if uid == ROOT_UID:
@@ -141,23 +100,18 @@ def user_type(uid) -> UserType or Exception:
              from users u
              where id=%s'''
 
-    with get_db().cursor() as c:
-        c.execute(sql, (uid))
-        return UserType(c.fetchone()[0])
+    return UserType(get_db().fetchone(sql, uid)[0])
 
-def users_of_type(locid, *user_types) -> "user telno":
+def users_of_type(locid, *user_types) -> {"telno": "nickname" or None}:
     conditions = " or ".join([ "u.user_type = {}".format(int(user_type))
                                for user_type in user_types ])
-    sql = '''select u.telno
+    sql = '''select u.telno, u.nickname
              from users u inner join beacons b
              on u.beacon = b.telno
              where b.locid = %s
              and ({})'''.format(conditions)
 
-    with get_db().cursor() as c:
-        c.execute(sql, (locid))
-
-    return [ u[0] for u in c.fetchall() ]
+    return { telno: nickname for telno, nickname in get_db().fetchall(sql, locid) }
 
 def beacon_nickname(locid) -> str:
     sql = '''select nickname
@@ -165,9 +119,7 @@ def beacon_nickname(locid) -> str:
              where locid = %s'''
 
     try:
-        with get_db().cursor() as c:
-            c.execute(sql, (locid))
-            return c.fetchone()[0]
+        return get_db().fetchone(sql, locid)[0]
     except:
         return ''
 
@@ -177,9 +129,7 @@ def user_token_lifetime(uid):
              on b.telno = u.beacon
              where u.id=%s'''
 
-    with get_db().cursor() as c:
-        c.execute(sql, (uid))
-        return c.fetchone()[0]
+    return get_db().fetchone(sql, uid)[0]
 
 def replace_token(uid) -> 'token':
     if uid == ROOT_UID:
@@ -189,13 +139,12 @@ def replace_token(uid) -> 'token':
 
     token = random_token()
 
-    sql = '''update users
-             set thash = %s, token_expires = %s
-             where id=%s'''
-    with get_db().cursor() as c:
-        c.execute(sql, (crypto.hash(token), int(datetime.now().timestamp()) + token_lifetime, uid))
-    get_db().commit()
+    updates = dict(
+            thash = crypto.hash(token),
+            token_expires = int(datetime.now().timestamp()) + token_lifetime)
+    wheres = dict(id = uid)
 
+    get_db().update('users', updates, wheres)
     return token
 
 def token_auth(uid, token) -> None or Exception:
@@ -204,9 +153,7 @@ def token_auth(uid, token) -> None or Exception:
              where id=%s'''
 
     try:
-        with get_db().cursor() as c:
-            c.execute(sql, (uid))
-            thash, token_expires = c.fetchone()
+        thash, token_expires = get_db().fetchone(sql, uid)
     except:
         raise Exception("couldn't get user")
 
@@ -223,9 +170,7 @@ def root_password_auth(password) -> None or Exception:
              from users u
              where id=%s'''
 
-    with get_db().cursor() as c:
-        c.execute(sql, (ROOT_UID))
-        phash, = c.fetchone()
+    phash, = get_db().fetchone(sql, ROOT_UID)
 
     if not crypto.verify(password, phash):
         raise Exception("password doesn't match")
@@ -240,9 +185,7 @@ def password_auth(locid, telno, password) -> None or Exception:
              on u.beacon = b.telno
              where b.locid=%s and u.telno=%s'''
 
-    with get_db().cursor() as c:
-        c.execute(sql, (locid, telno))
-        phash, = c.fetchone()
+    phash, = get_db().fetchone(sql, locid, telno)
 
     if not crypto.verify(password, phash):
         raise Exception("password doesn't match")
@@ -257,7 +200,8 @@ def root_password_set() -> bool:
             c.execute(sql, (ROOT_UID))
             return bool(c.rowcount)
 
-    except:
+    except Exception as e:
+        print('root_password_set()', e) # DEBUG
         return False
 
 def change_password(uid, password) -> None or Exception:
@@ -265,11 +209,10 @@ def change_password(uid, password) -> None or Exception:
              set phash=%s
              where id=%s'''
 
-    with get_db().cursor() as c:
-        c.execute(sql, (crypto.hash(password), uid))
-        get_db().commit()
-        if not c.rowcount:
-            raise Exception("no such user")
+    updates = dict(phash = crypto.hash(password))
+    wheres = dict(id = uid)
+    if not get_db().update('users', updates, wheres):
+        raise Exception("no such user")
 
 def cookie_auth(allow_uids=all_of_them, allow_user_types=[UserType.ADMIN]) -> 'decorator':
     def wrapper(f):
@@ -330,18 +273,6 @@ def beacon_name():
         beacon_nickname=beacon_nickname,
         ROOT_UID=ROOT_UID)
 
-def make_root_user():
-    root_token = random_token()
-    now = int(datetime.now().timestamp())
-    insert_into('users',
-        telno='root',
-        beacon='root',
-        user_type=UserType.ADMIN,
-        thash=crypto.hash(root_token),
-        token_expires= now + config.root_token_lifetime,
-        created=now)
-    print("Root user initialized. Run the app with ./app.py, then set the root password at:\n  http://localhost:5000/root/login/" + root_token)
-
 # ROUTES
 
 @app.route('/test')
@@ -367,7 +298,8 @@ def autologin(locid, uid, token):
         response.set_cookie('u', str(uid))
         response.set_cookie('t', replace_token(uid))
         return response
-    except:
+    except Exception as e:
+        print('autologin()', e) # DEBUG
         print("URL auth failed") # DEBUG
         return redirect(url_for('login', locid=locid))
 
@@ -390,11 +322,12 @@ def root():
 @app.route('/beacons')
 @cookie_auth(allow_uids=[ROOT_UID])
 def beacons():
-    with get_db().cursor() as c:
-        c.execute('select `nickname`, `locid`, `description` from `beacons`')
-        beacons = [ (nickname, locid.upper(), description, url_for('settings', locid=locid.lower()))
-                    for nickname, locid, description in c.fetchall() ]
-        return render_template('beacons.html', beacons=beacons)
+
+    sql = '''select `nickname`, `locid`, `description`
+             from `beacons`'''
+    beacons = [ (nickname, locid.upper(), description, url_for('settings', locid=locid.lower()))
+                for nickname, locid, description in get_db().fetchall(sql) ]
+    return render_template('beacons.html', beacons=beacons)
 
 ## ROOT-ONLY
 
@@ -431,17 +364,15 @@ def alerts(locid):
         return redirect(url_for('login', locid=locid))
 
     try:
-        with get_db().cursor() as c:
-            sql = '''select a.alert_type
-                     from beacons b inner join alerts a
-                     on b.telno = a.beacon
-                     where b.locid=%s'''
+        sql = '''select a.alert_type
+                 from beacons b inner join alerts a
+                 on b.telno = a.beacon
+                 where b.locid=%s'''
+        alerts = [ alert for alert, in get_db().fetchall(sql, locid) ]
 
-            c.execute(sql, (locid))
-            alerts = [ alert for alert, in c.fetchall() ]
-            return render_template('alerts.html',
-                    locid=locid,
-                    alerts=alerts)
+        return render_template('alerts.html',
+                locid=locid,
+                alerts=alerts)
     except:
         import traceback; traceback.print_exc() #DEBUG
         return 'No alerts!'
@@ -468,7 +399,7 @@ def new_beacon():
 
         # store the new beacon in the database and show an edit form
         try:
-            insert_into('beacons', **m)
+            get_db().insert_into('beacons', **m)
             flash("Beacon created", 'info')
             flash(request.url_root.rstrip('/') + url_for('sms', locid=m['locid'], secret=m['secret']), 'new_secret')
             return redirect(url_for('settings', locid=m['locid']))
@@ -499,7 +430,7 @@ def settings(locid):
     # on GET, populate the blank form with current settings
     if request.method == 'GET':
         try:
-            m = get_from('beacons', forms.Beacon().into_db().keys(), 'locid = %s', (locid))
+            m = get_db().get_from('beacons', forms.Beacon().into_db().keys(), 'locid = %s', (locid))
             form = forms.Beacon.from_db(m)
         except:
             import traceback; traceback.print_exc() #DEBUG
@@ -508,12 +439,13 @@ def settings(locid):
     # on POST, populate the form with request.form data
     else:
         form = forms.Beacon()
+        # TODO: shouldn't be allowed to change the locid by being sneaky
 
     if form.validate_on_submit():
         m = form.into_db()
 
         try:
-            update('beacons', **m)
+            get_db().update('beacons', updates=m)
             flash('Beacon updated', 'info')
             if form.new_secret.data:
                 flash(request.url_root.rstrip('/') + url_for('sms', locid=m['locid'], secret=m['secret']), 'new_secret')

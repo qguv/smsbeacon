@@ -20,7 +20,10 @@
 {{ form.telno.label }} {{ form.telno }} <br />
 {{ form.nickname.label }} {{ form.nickname }} <br />
 {{ form.description.label }} {{ form.description }} <br />
+
+{% if locid is not defined %}
 {{ form.locid.label }} {{ form.locid }} <br />
+{% endif %}
 
 {{ form.plivo_id.label }} {{ form.plivo_id }} <br />
 {{ form.plivo_token.label }} {{ form.plivo_token }} <br />
