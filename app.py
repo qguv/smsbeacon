@@ -213,15 +213,7 @@ def cookie_auth(allow_uids=all_of_them, allow_user_types=[UserType.ADMIN]) -> 'd
                 print("invalid uid") #DEBUG
                 return unauthorized()
 
-            # TODO: we should redirect to the login for the locid they
-            # requested, not the one they ostensibly belong to, because one
-            # user may have several accounts on separate beacons
-            try:
-                g.locid = user_locid(g.uid)
-            except:
-                print("couldn't get locid for user") #DEBUG
-                return unauthorized()
-
+            g.locid = kwargs.get('locid', 'root')
             beacon_login = redirect(url_for('login', locid=g.locid))
 
             if g.uid not in allow_uids:
