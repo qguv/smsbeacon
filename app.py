@@ -108,6 +108,13 @@ def beacon_nickname(locid) -> str:
     except:
         return ''
 
+def beacon_telno(locid) -> str:
+    sql = '''select telno
+             from beacons
+             where locid = %s'''
+
+    return get_db().fetchone(sql, locid)[0]
+
 def user_token_lifetime(uid):
     sql = '''select b.token_lifetime
              from beacon b inner join users u
@@ -132,10 +139,10 @@ def replace_token(uid) -> 'token':
     get_db().update('users', updates, wheres)
     return token
 
-class TokenExpired(Exception):
+class BadToken(Exception):
     pass
 
-class BadToken(Exception):
+class TokenExpired(BadToken):
     pass
 
 def token_auth(uid, token) -> None or Exception:
@@ -237,11 +244,11 @@ def cookie_auth(allow_uids=all_of_them, allow_user_types=[UserType.ADMIN]) -> 'd
 
             try:
                 token_auth(g.uid, token)
-            except BadToken:
-                print("bad token") #DEBUG
-                return beacon_login
             except TokenExpired:
                 print("token expired") #DEBUG
+                return beacon_login
+            except BadToken:
+                print("bad token") #DEBUG
                 return beacon_login
 
             return f(*args, **kwargs)
