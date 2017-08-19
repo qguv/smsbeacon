@@ -1,5 +1,5 @@
 from flask_wtf import FlaskForm
-from wtforms import BooleanField, StringField, TextAreaField, IntegerField, HiddenField
+from wtforms import BooleanField, StringField, TextAreaField, IntegerField, HiddenField, PasswordField
 from wtforms.validators import DataRequired, InputRequired, Optional, Length, ValidationError, NumberRange
 from werkzeug.datastructures import MultiDict
 
@@ -47,6 +47,16 @@ class InputRequiredIf():
             InputRequired(*self.args, **self.kwargs)(form, field)
         else:
             Optional(*self.args, **self.kwargs)(form, field)
+
+choosable_roles = {"Subscriber": UserType.SUBSCRIBED,
+                   "Admin": UserType.ADMIN,
+                   "Not subscribed": UserType.NOT_SUBSCRIBED}
+
+class User(FlaskForm):
+    telno = StringField("Phone number:", [DataRequired(), InClassLength(string.digits, 'digits', min=10)])
+    password = PasswordField("Phone number:", [DataRequired()])
+    role = SelectField("Role:", choices=[ (str(v), k) for k, v in choosable_roles.items() ])
+    nickname = StringField("Nickname?", [])
 
 class Beacon(FlaskForm):
 

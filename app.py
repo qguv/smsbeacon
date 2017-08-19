@@ -475,6 +475,42 @@ def admins(locid):
     users = users_of_type(locid, UserType.ADMIN)
     return render_template('users.html', users=users, title="Admins", locid=locid)
 
+@app.route('/<locid>/admins/new')
+def new_admin(locid):
+    form = forms.User()
+
+    # if it's a POST request and the form validates correctly
+    if form.validate_on_submit():
+
+        # check if user exists
+        try:
+            user_uid(locid, form.telno.data)
+            flash("There's already a user with that phone number!")
+            return redirect(url_for('admins', locid=locid))
+        except:
+            pass
+
+        try:
+            now = int(datetime.now().timestamp())
+            get_db().insert_into('users',
+                    beacon=beacon_telno(locid),
+                    telno=form.telno.data,
+                    nickname='' if form.nickname.data is not None else form.nickname.data,
+                    user_type=UserType.ADMIN,
+                    phash=crypto.hash(password),
+                    created=now)
+            flash("User created")
+        except:
+            flash("Couldn't create user")
+
+
+    # if validation failed, inform the user
+    for field, errors in form.errors.items():
+        for error in errors:
+            flash("{} {}".format(getattr(form, field).label.text, error), 'validation')
+
+    return redirect(url_for('admins', locid=locid))
+
 @app.route('/<locid>/bans')
 def bans(locid):
     users = users_of_type(locid, UserType.BANNED_WASNT_SUBSCRIBED, UserType.BANNED_WAS_SUBSCRIBED)
