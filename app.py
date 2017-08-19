@@ -132,6 +132,12 @@ def replace_token(uid) -> 'token':
     get_db().update('users', updates, wheres)
     return token
 
+class TokenExpired(Exception):
+    pass
+
+class BadToken(Exception):
+    pass
+
 def token_auth(uid, token) -> None or Exception:
     sql = '''select thash, token_expires
              from users
@@ -143,10 +149,10 @@ def token_auth(uid, token) -> None or Exception:
         raise Exception("couldn't get user")
 
     if token_expires < int(datetime.now().timestamp()):
-        raise Exception("token expired")
+        raise TokenExpired("token expired")
 
     if not crypto.verify(token, thash):
-        raise Exception("token doesn't match")
+        raise BadToken("token doesn't match")
 
 def root_password_auth(password) -> None or Exception:
     '''returns on success, exception on failure'''
@@ -231,8 +237,11 @@ def cookie_auth(allow_uids=all_of_them, allow_user_types=[UserType.ADMIN]) -> 'd
 
             try:
                 token_auth(g.uid, token)
-            except Exception as e:
-                print("wrong token") #DEBUG
+            except BadToken:
+                print("bad token") #DEBUG
+                return beacon_login
+            except TokenExpired:
+                print("token expired") #DEBUG
                 return beacon_login
 
             return f(*args, **kwargs)
