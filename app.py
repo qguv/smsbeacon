@@ -2,8 +2,8 @@
 
 import config
 import forms
-from db import Database
-from utils import random_token, all_of_them, IntEnum
+from db import Database, UserType, AlertType, ROOT_UID
+from utils import random_token, all_of_them
 
 from datetime import datetime
 from functools import wraps
@@ -22,21 +22,6 @@ from flask_wtf.csrf import CSRFProtect
 app = Flask(__name__)
 app.secret_key = config.flask_secret_key
 csrfp = CSRFProtect(app)
-
-ROOT_UID = 1
-
-class UserType(IntEnum):
-    NOT_SUBSCRIBED = 0
-    SUBSCRIBED = 1
-    ADMIN = 2
-    BANNED_WASNT_SUBSCRIBED = 3
-    BANNED_WAS_SUBSCRIBED = 4
-
-class AlertType(IntEnum):
-   REPORT_PENDING = 0
-   REPORT_RELAYED = 1
-   REPORT_REJECTED = 2
-   WALLOPS_RELAYED = 3
 
 def bad_request():
     return make_response(('Bad request :(', 400, {}))

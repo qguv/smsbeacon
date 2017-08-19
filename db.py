@@ -1,6 +1,22 @@
 from pymysql import connect
+
 from config import database
-from utils import maybe_call
+from utils import maybe_call, IntEnum
+
+ROOT_UID = 1
+
+class UserType(IntEnum):
+    NOT_SUBSCRIBED = 0
+    SUBSCRIBED = 1
+    ADMIN = 2
+    BANNED_WASNT_SUBSCRIBED = 3
+    BANNED_WAS_SUBSCRIBED = 4
+
+class AlertType(IntEnum):
+   REPORT_PENDING = 0
+   REPORT_RELAYED = 1
+   REPORT_REJECTED = 2
+   WALLOPS_RELAYED = 3
 
 class Database:
 
