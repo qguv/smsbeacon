@@ -57,7 +57,7 @@ create table `alerts` (
 drop table if exists `users`;
 create table `users` (
 
-  /* root is 0 */
+  /* root is 1 */
   `id` serial primary key,
 
   `beacon` varchar(16) not null,
