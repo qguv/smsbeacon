@@ -441,17 +441,20 @@ def settings(locid):
         form = forms.Beacon()
         # TODO: shouldn't be allowed to change the locid by being sneaky
 
+    form.locid.data = locid
     if form.validate_on_submit():
         m = form.into_db()
 
         try:
-            get_db().update('beacons', updates=m)
+            get_db().update('beacons', updates=m, wheres={'telno': m['telno']})
             flash('Beacon updated', 'info')
             if form.new_secret.data:
                 flash(request.url_root.rstrip('/') + url_for('sms', locid=m['locid'], secret=m['secret']), 'new_secret')
             return redirect(url_for('settings', locid=m['locid']))
 
-        except:
+        except Exception as e:
+            flash("server error :(", 'error')
+            import traceback; print("SERVER ERROR:", e, traceback.format_exc(), sep='\n', end='\n\n') #DEBUG
             pass
 
     # if validation failed, inform the user
