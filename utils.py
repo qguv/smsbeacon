@@ -19,7 +19,12 @@ class IntEnum(_IntEnum):
     def __str__(self, *args, **kwargs):
         return str(int(self))
 
-def call_some(x, f):
-    if x is None:
+def maybe_call(f, *args):
+    if f is None:
         return
-    return f(x)
+
+    for arg in args:
+        if arg is None:
+            return
+
+    return f(*args)

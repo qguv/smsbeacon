@@ -1,6 +1,6 @@
 from pymysql import connect
 from config import database
-from utils import call_some
+from utils import maybe_call
 
 class Database:
 
@@ -11,7 +11,7 @@ class Database:
         keys, values = zip(*kwargs.items())
 
         # get string representation, but leave None alone
-        values = [ call_some(v, str) for v in values ]
+        values = [ maybe_call(str, v) for v in values ]
 
         params = ', '.join(['%s'] * len(keys))
         columns = ', '.join('`{}`'.format(k) for k in keys)
@@ -25,8 +25,8 @@ class Database:
         where_keys, where_values = zip(*wheres.items())
 
         # get string representation, but leave None alone
-        update_values = list(map(lambda v: call_some(v, str), update_values))
-        where_values = list(map(lambda v: call_some(v, str), where_values))
+        update_values = list(map(lambda v: maybe_call(str, v), update_values))
+        where_values = list(map(lambda v: maybe_call(str, v), where_values))
 
         updates = ', '.join( '`{}` = %s'.format(k) for k in update_keys )
         wheres = ' and '.join( '`{}` = %s'.format(k) for k in where_keys )

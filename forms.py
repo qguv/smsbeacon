@@ -7,7 +7,7 @@ from werkzeug.datastructures import MultiDict
 BooleanField.false_values = {False, 'false', ''}
 
 import config
-from utils import random_token, call_some, normal_telno
+from utils import random_token, maybe_call, normal_telno
 
 import string
 
@@ -91,10 +91,10 @@ class Beacon(FlaskForm):
         '''turn the form response into a database object. must handle fields
         being None, as they are just after the form object is instantiated.'''
         return dict(
-            telno = call_some(self.telno.data, normal_telno),
+            telno = maybe_call(normal_telno, self.telno.data),
             nickname = self.nickname.data,
             description = self.description.data,
-            locid = call_some(self.locid.data, lambda x: x.lower()),
+            locid = maybe_call(lambda x: x.lower(), self.locid.data),
             plivo_id = self.plivo_id.data,
             plivo_token = self.plivo_token.data,
             autosend_delay = int(self.autosend_delay_minutes.data) * 60 if self.autosend.data else None,
