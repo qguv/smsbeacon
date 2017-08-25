@@ -142,10 +142,16 @@ def replace_token(uid) -> 'token':
 class BadToken(Exception):
     pass
 
-class TokenExpired(BadToken):
+class TokenExpired(Exception):
     pass
 
-def token_auth(uid, token) -> None or Exception:
+class NoSuchUser(Exception):
+    pass
+
+def token_auth(uid, token) -> None or Exception or BadToken or TokenExpired:
+    '''TokenExpired implies the token would've otherwise been good. BadToken
+    means the token failed the check, regardless of expiry.'''
+
     sql = '''select thash, token_expires
              from users
              where id=%s'''
@@ -155,11 +161,11 @@ def token_auth(uid, token) -> None or Exception:
     except:
         raise Exception("couldn't get user")
 
-    if token_expires < int(datetime.now().timestamp()):
-        raise TokenExpired("token expired")
-
     if not crypto.verify(token, thash):
         raise BadToken("token doesn't match")
+
+    if token_expires < int(datetime.now().timestamp()):
+        raise TokenExpired("token expired")
 
 def root_password_auth(password) -> None or Exception:
     '''returns on success, exception on failure'''
@@ -216,39 +222,53 @@ def cookie_auth(allow_uids=all_of_them, allow_user_types=[UserType.ADMIN]) -> 'd
     def wrapper(f):
         @wraps(f)
         def wrapped(*args, **kwargs):
+
+            locid = kwargs.get('locid', 'root')
+            beacon_login = redirect(url_for('login', locid=locid))
+
             try:
                 g.uid = int(request.cookies['u'])
                 token = request.cookies['t']
-            except KeyError:
-                print("couldn't get cookies") #DEBUG
-                return unauthorized()
             except ValueError:
-                print("invalid uid") #DEBUG
-                return unauthorized()
-
-            g.locid = kwargs.get('locid', 'root')
-            beacon_login = redirect(url_for('login', locid=g.locid))
-
-            if g.uid not in allow_uids:
-                print("uid not allowed")
+                print("malformed cookies") #DEBUG
                 return beacon_login
-
-            try:
-                g.user_type = user_type(g.uid) # TODO: combine
-                if g.user_type not in allow_user_types:
-                    print("user type not allowed")
-                    return beacon_login
             except:
-                print("couldn't get type for user")
+                print("couldn't get cookies") #DEBUG
+                import traceback; traceback.print_exc() #DEBUG
                 return beacon_login
 
             try:
                 token_auth(g.uid, token)
             except TokenExpired:
                 print("token expired") #DEBUG
+                flash("Session expired, please log in again.")
                 return beacon_login
             except BadToken:
                 print("bad token") #DEBUG
+                return beacon_login
+            except NoSuchUser:
+                print("no user with uid from cookie") #DEBUG
+                return beacon_login
+            except:
+                print("couldn't authorize user") #DEBUG
+                import traceback; traceback.print_exc() #DEBUG
+                return beacon_login
+
+            if g.uid not in allow_uids:
+                print("user not allowed")
+                return forbidden()
+
+            if g.uid != ROOT_UID and user_locid(g.uid) != locid:
+                print("logged-in user doesn't belong to this beacon")
+                return beacon_login
+
+            try:
+                if user_type(g.uid) not in allow_user_types: #TODO combine user db calls
+                    print("user type not allowed")
+                    return forbidden()
+            except:
+                print("couldn't get type for user")
+                import traceback; traceback.print_exc() #DEBUG
                 return beacon_login
 
             return f(*args, **kwargs)
@@ -353,19 +373,24 @@ def login(locid):
 @cookie_auth()
 def alerts(locid):
     locid = locid.lower()
-    if g.uid != ROOT_UID and g.locid != locid:
-        return redirect(url_for('login', locid=locid))
 
     try:
-        sql = '''select a.alert_type
+        sql = '''select a.text, a.alert_type
                  from beacons b inner join alerts a
                  on b.telno = a.beacon
                  where b.locid=%s'''
-        alerts = [ alert for alert, in get_db().fetchall(sql, locid) ]
+
+        # build a map from alert type to messages
+        d = {}
+        for text, atype in get_db().fetchall(sql, locid):
+            atype = AlertType(atype)
+            msgs = d.get(atype, [])
+            msgs.append(text)
+            d[atype] = msgs
 
         return render_template('alerts.html',
                 locid=locid,
-                alerts=alerts)
+                alerts=d)
     except:
         import traceback; traceback.print_exc() #DEBUG
         return 'No alerts!'
@@ -374,10 +399,35 @@ def alerts(locid):
 @cookie_auth()
 def new_alert(locid):
     locid = locid.lower()
-    if g.uid != ROOT_UID and g.locid != locid:
-        return redirect(url_for('login', locid=locid))
 
-    return render_template('todo.html', locid=locid) # TODO post a new alert
+    text = request.form['text'].strip()
+    now = int(datetime.now().timestamp())
+    last_id = get_db().insert_into('alerts',
+            beacon=beacon_telno(locid),
+            telno=user_telno(g.uid),
+            text=text,
+            reported=now,
+            alert_type=AlertType.REPORT_PENDING)
+
+    blast(last_id)
+
+    flash("Message queued!")
+    return redirect(url_for('alerts', locid=locid))
+
+def blast(alert_id):
+    return #TODO
+
+def process():
+    # for each beacon
+
+        # if `autosend` is enabled for this beacon, blast all REPORT_PENDING
+        # reports whose `reported` time plus the beacon's `autosend_delay` exceeds
+        # the current time
+
+        # if `prune` is enabled for this beacon, remove stale alerts
+        #if alert_type in (AlertType.REPORT_RELAYED, AlertType.REPORT_REJECTED, AlertType.WALLOPS_RELAYED):
+
+    return #TODO
 
 @app.route('/beacons/new', methods=['GET', 'POST'])
 @cookie_auth(allow_uids=[ROOT_UID])
@@ -415,9 +465,6 @@ def new_beacon():
 @app.route('/<locid>/settings', methods=['GET', 'POST'])
 @cookie_auth()
 def settings(locid):
-    if g.uid != ROOT_UID and g.locid != locid:
-        return forbidden()
-
     # TODO what happens if the url is /root/settings?
 
     # on GET, populate the blank form with current settings
@@ -432,7 +479,7 @@ def settings(locid):
     # on POST, populate the form with request.form data
     else:
         form = forms.Beacon()
-        # TODO: shouldn't be allowed to change the locid by being sneaky
+        form.locid.data = locid
 
     form.locid.data = locid
     if form.validate_on_submit():

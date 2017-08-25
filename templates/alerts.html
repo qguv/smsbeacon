@@ -4,16 +4,28 @@
 <form id="alert_form" action="{{ url_for('new_alert', locid=locid) }}" method="post">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
 <textarea name="text" autofocus></textarea>
-<input type="submit" value="Send immediately" />
+<input type="submit" value="Queue it" />
 </form>
 
 <h3>Pending</h3>
-{# TODO: add examples #}
+<ul>
+{% for msg in alerts.get(AlertType.REPORT_PENDING, []) %}
+    <li>{{ msg }}</li>
+{% endfor %}
+</ul>
 
 <h3>Sent recently</h3>
-{# TODO: add examples #}
+<ul>
+{% for msg in alerts.get(AlertType.REPORT_RELAYED, []) + alerts.get(AlertType.WALLOPS_RELAYED, []) %}
+    <li>{{ msg }}</li>
+{% endfor %}
+</ul>
 
 <h3>Rejected recently</h3>
-{# TODO: add examples #}
+<ul>
+{% for msg in alerts.get(AlertType.REPORT_REJECTED, []) %}
+    <li>{{ msg }}</li>
+{% endfor %}
+</ul>
 
 {% endblock %}

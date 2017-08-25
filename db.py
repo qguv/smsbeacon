@@ -34,7 +34,9 @@ class Database:
 
         with self.db.cursor() as c:
             c.execute('insert into `{}` ({}) values ({})'.format(table, columns, params), values)
+            last_id = c.lastrowid
         self.db.commit()
+        return last_id
 
     def update(self, table, updates=dict(), wheres=dict()):
         update_keys, update_values = zip(*updates.items())
