@@ -90,7 +90,7 @@ class Beacon(FlaskForm):
 
         d['prune'] = d['prune_delay'] is not None
         if d['prune']:
-            d['prune_delay_hours'] = d['prune_delay'] // 360
+            d['prune_delay_hours'] = d['prune_delay'] // 3600
 
         d['token_lifetime_minutes'] = d['token_lifetime'] // 60
 
@@ -109,6 +109,6 @@ class Beacon(FlaskForm):
             plivo_id = self.plivo_id.data,
             plivo_token = self.plivo_token.data,
             autosend_delay = int(self.autosend_delay_minutes.data) * 60 if self.autosend.data else None,
-            prune_delay = int(self.prune_delay_hours.data) * 360 if self.prune.data else None,
+            prune_delay = int(self.prune_delay_hours.data) * 3600 if self.prune.data else None,
             token_lifetime = int(self.token_lifetime_minutes.data) * 60,
             secret = random_token(config.plivo_url_secret_length) if self.new_secret.data or not self.secret.data else self.secret.data)
