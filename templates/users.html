@@ -1,20 +1,94 @@
-{% extends 'base.html' %}
+{% extends 'es6.html' %}
 {% block content %}
 
-{% if users %}
+<h2>{{ title }}</h2>
+<form action="{{ url_for('post_user', locid=locid) }}" method="post" style="display: hidden;">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+<input type="hidden" name="status" value="{{ user_types[0] }}" />
+
+Phone number:
+<br />
+<input type="text" name="telno" />
+<br />
+
+{% if user_types[0] == UserType.ADMIN %}
+Name:
+<br />
+<input type="text" name="nickname" />
+<br />
+
+<input type="submit" value="{{ 'Make admin' }}" />
+{% elif user_types[0] == UserType.SUBSCRIBED %}
+<input type="submit" value="{{ 'Subscribe' }}" />
+{% elif user_types[0] == UserType.BANNED_WASNT_SUBSCRIBED %}
+<input type="submit" value="{{ 'Ban' }}" />
+{% endif %}
+
+</form>
 <ul>
-{% endif %}
 
-{% for telno, nickname in users.items() %}
-    {% if nickname is not none %}
-        <li>{{ nickname }} ({{ telno }})</li>
-    {% else %}
-        <li>{{ telno }}</li>
-    {% endif %}
-{% endfor %}
+    {% for telno, (uid, nickname, user_type) in users.items() %}
+        {% if nickname is not none %}
+            <li>{{ nickname }} ({{ telno }})</li>
+        {% else %}
+            <li>{{ telno }}</li>
+        {% endif %}
+        <ul>
 
-{% if users %}
+            {% if user_type == UserType.SUBSCRIBED %}
+            <li>
+                <button onclick="patch_user('{{ url_for('patch_user', locid=locid, uid=uid) }}', {{ UserType.NOT_SUBSCRIBED }})">
+                    Unsubscribe
+                </button>
+            </li>
+
+            <li>
+                <button onclick="patch_user('{{ url_for('patch_user', locid=locid, uid=uid) }}', {{ UserType.ADMIN }})">
+                    Make admin
+                </button>
+            </li>
+            {% endif %}
+
+            {% if user_type in (UserType.BANNED_WAS_SUBSCRIBED, UserType.BANNED_WASNT_SUBSCRIBED) %}
+            <li>
+                <button onclick="patch_user('{{ url_for('patch_user', locid=locid, uid=uid) }}', {{ UserType.SUBSCRIBED if user_type == UserType.BANNED_WAS_SUBSCRIBED else UserType.NOT_SUBSCRIBED }})">
+                    Unban
+                </button>
+            </li>
+            {% endif %}
+
+            {% if user_type in (UserType.ADMIN, UserType.SUBSCRIBER) %}
+            <li>
+                <button onclick="patch_user('{{ url_for('patch_user', locid=locid, uid=uid) }}', {{ UserType.BANNED_WAS_SUBSCRIBED }})">
+                    Ban
+                </button>
+            </li>
+            {% endif %}
+
+            {% if user_type == UserType.ADMIN %}
+            <li>
+                <button onclick="patch_user('{{ url_for('patch_user', locid=locid, uid=uid) }}', {{ UserType.SUBSCRIBED }})">
+                    Demote to subscriber
+                </button>
+            </li>
+            {% endif %}
+
+        </ul>
+    {% endfor %}
 </ul>
-{% endif %}
 
+<script>
+function patch_user(url, user_type) {
+    let fd = new FormData();
+    fd.append('user_type', user_type);
+    fd.append('csrf_token', '{{ csrf_token() }}');
+
+    fetch(url, {
+        method: 'PATCH',
+        body: fd,
+        credentials: 'include',
+        headers: new Headers()
+    }).then(_ => location.reload());
+}
+</script>
 {% endblock %}

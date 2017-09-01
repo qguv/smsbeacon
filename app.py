@@ -3,7 +3,7 @@
 import config
 import forms
 from db import Database, UserType, AlertType, ROOT_UID
-from utils import random_token, all_of_them
+from utils import random_token, all_of_them, normal_telno
 
 from datetime import datetime
 from functools import wraps
@@ -87,16 +87,15 @@ def user_type(uid) -> UserType or Exception:
 
     return UserType(get_db().fetchone(sql, uid)[0])
 
-def users_of_type(locid, *user_types) -> {"telno": "nickname" or None}:
-    conditions = " or ".join([ "u.user_type = {}".format(int(user_type))
-                               for user_type in user_types ])
-    sql = '''select u.telno, u.nickname
+def users_of_type(locid, *user_types) -> {"telno": ('id', 'nickname', 'user_type')} or None:
+    sql = '''select u.telno, u.id, u.nickname, u.user_type
              from users u inner join beacons b
              on u.beacon = b.telno
              where b.locid = %s
-             and ({})'''.format(conditions)
+             and u.user_type in ({})
+    '''.format(','.join(str(ut) for ut in user_types))
 
-    return { telno: nickname for telno, nickname in get_db().fetchall(sql, locid) }
+    return { telno: (uid, nickname, user_type) for telno, uid, nickname, user_type in get_db().fetchall(sql, locid) }
 
 def beacon_nickname(locid) -> str:
     sql = '''select nickname
@@ -139,7 +138,7 @@ def replace_token(uid) -> 'token':
     if uid == ROOT_UID:
         token_lifetime = config.root_token_lifetime
     else:
-        token_lifetime = user_token_lifetime()
+        token_lifetime = user_token_lifetime(uid)
 
     token = random_token()
 
@@ -275,7 +274,8 @@ def cookie_auth(allow_uids=all_of_them, allow_user_types=[UserType.ADMIN]) -> 'd
                 return beacon_login
 
             try:
-                if user_type(g.uid) not in allow_user_types: #TODO combine user db calls
+                g.user_type = user_type(g.uid)
+                if g.user_type not in allow_user_types: #TODO combine user db calls
                     print("user type not allowed")
                     return forbidden()
             except:
@@ -315,6 +315,9 @@ def logout(locid):
 @app.route('/<locid>/login/<int:uid>/<token>')
 @app.route('/root/login/<token>', defaults={'locid': 'root', 'uid': ROOT_UID})
 def autologin(locid, uid, token):
+
+    # FIXME: can't log in as non-root user
+
     locid = locid.lower()
     try:
         token_auth(uid, token)
@@ -322,6 +325,7 @@ def autologin(locid, uid, token):
         response = redirect(url_for('root') if uid == ROOT_UID else url_for('alerts', locid=locid))
         response.set_cookie('u', str(uid))
         response.set_cookie('t', replace_token(uid))
+        # TODO: force password change on non-root login
         return response
     except Exception as e:
         print('autologin()', e) # DEBUG
@@ -381,6 +385,10 @@ def login(locid):
     except:
         return redirect(url_for('login', locid=locid))
 
+@app.route('/<locid>')
+def locid_root(locid):
+    return redirect(url_for('alerts', locid=locid))
+
 @app.route('/<locid>/alerts')
 @cookie_auth()
 def alerts(locid):
@@ -407,24 +415,13 @@ def alerts(locid):
         import traceback; traceback.print_exc() #DEBUG
         return 'No alerts!'
 
-@app.route('/<locid>/alert/<alert>', methods=['PUT'])
-@cookie_auth()
-def put_alert(locid, alert):
-    locid = locid.lower()
-    action = AlertType(int(request.form['status'].strip()))
+def send_sms(to, text, sender):
+    print("[DEBUG] The following message from {} would have sent to {}:\n{}".format(sender, to, text))
+    return #TODO
 
-    text, sender = alert_details(alert)
-
-    if action == AlertType.REPORT_RELAYED:
-        blast(text, locid, sender)
-        flash("Report sent out.")
-
-    elif action == AlertType.REPORT_REJECTED:
-        flash("Report rejected.")
-
-    now = int(datetime.now().timestamp())
-    get_db().update('alerts', {'alert_type': action, 'acted': now}, {'id': alert})
-    return 'OK'
+def blast(text, locid, sender):
+    print("[DEBUG] The following message from {} would have blasted to the {} beacon:\n{}".format(sender, locid, text))
+    return #TODO
 
 @app.route('/<locid>/alerts/new', methods=['POST'])
 @cookie_auth()
@@ -453,9 +450,24 @@ def new_alert(locid):
 
     return redirect(url_for('alerts', locid=locid))
 
-def blast(text, locid, sender):
-    print("[DEBUG] The following message from {} would have blasted to the {} beacon:\n{}".format(sender, locid, text))
-    return #TODO
+@app.route('/<locid>/alert/<alert>', methods=['PATCH'])
+@cookie_auth()
+def patch_alert(locid, alert):
+    locid = locid.lower()
+    action = AlertType(int(request.form['status'].strip()))
+
+    text, sender = alert_details(alert)
+
+    if action == AlertType.REPORT_RELAYED:
+        blast(text, locid, sender)
+        flash("Report sent out.")
+
+    elif action == AlertType.REPORT_REJECTED:
+        flash("Report rejected.")
+
+    now = int(datetime.now().timestamp())
+    get_db().update('alerts', {'alert_type': action, 'acted': now}, {'id': alert})
+    return 'OK'
 
 @app.route('/p/<secret>')
 def process(secret):
@@ -486,7 +498,6 @@ def process(secret):
 
     now = int(datetime.now().timestamp())
     prunable = [AlertType.REPORT_RELAYED, AlertType.REPORT_REJECTED, AlertType.WALLOPS_RELAYED]
-    alert_types = tuple(int(at) for at in prunable)
 
     # delete all messages that have long since been acted upon
     sql = '''delete a
@@ -495,9 +506,9 @@ def process(secret):
              where b.prune_delay is not null
              and b.prune_delay > 0
              and a.acted is not null
-             and a.alert_type in {}
+             and a.alert_type in ({})
              and a.acted + b.prune_delay < {}
-    '''.format(alert_types, now)
+    '''.format(','.join(str(at) for at in prunable), now)
 
     pruned = get_db().execute(sql)
     prune_msg = "[DEBUG] {} old reports were pruned".format(pruned)
@@ -587,15 +598,60 @@ def settings(locid):
 def sms(locid, secret):
     return render_template('todo.html', locid=locid) # TODO
 
-@app.route('/<locid>/subscribers')
-def subscribers(locid):
-    users = users_of_type(locid, UserType.SUBSCRIBED)
-    return render_template('users.html', users=users, title="Subscribers", locid=locid)
+@app.route('/<locid>/subscribers', endpoint='subscribers', defaults={'title': 'Subscribers', 'user_types': [UserType.SUBSCRIBED]})
+@app.route('/<locid>/admins', endpoint='admins', defaults={'title': 'Admins', 'user_types': [UserType.ADMIN]})
+@app.route('/<locid>/bans', endpoint='bans', defaults={'title': 'Bans', 'user_types': [UserType.BANNED_WASNT_SUBSCRIBED, UserType.BANNED_WAS_SUBSCRIBED]})
+@cookie_auth()
+def users(locid, title, user_types):
+    '''The first user in the user_types array is used as the type of new users
+    created from this page.'''
 
-@app.route('/<locid>/admins')
-def admins(locid):
-    users = users_of_type(locid, UserType.ADMIN)
-    return render_template('users.html', users=users, title="Admins", locid=locid)
+    users = users_of_type(locid, *user_types)
+    return render_template('users.html', users=users, title=title, locid=locid, user_types=user_types)
+
+@app.route('/<locid>/users/<uid>', methods=['PATCH'])
+@cookie_auth()
+def patch_user(locid, uid):
+    locid = locid.lower()
+    user_type = UserType(int(request.form['user_type'].strip()))
+    get_db().update('users', {'user_type': user_type}, {'id': uid})
+
+    if user_type == UserType.ADMIN:
+        token = replace_token(uid)
+        url = url_for('autologin', uid=uid, locid=locid, token=token)
+        send_sms(user_telno(uid), "You're now an admin on the {} beacon. Click to log in: {}".format(locid, request.url_root.rstrip('/') + url), beacon_telno(locid))
+
+    flash("User updated.")
+    return 'OK'
+
+@app.route('/<locid>/user/new', methods=['POST'])
+@cookie_auth()
+def post_user(locid):
+    locid = locid.lower()
+    now=int(datetime.now().timestamp())
+    beacon = beacon_telno(locid)
+
+    model = dict(
+        beacon=beacon,
+        telno=normal_telno(request.form['telno']),
+        user_type=UserType(int(request.form['status'].strip())),
+        created=now,
+    )
+
+    if model['user_type'] == UserType.ADMIN:
+        model['nickname'] = request.form['nickname'].strip()
+
+    uid = get_db().insert_into('users', **model)
+
+    if model['user_type'] == UserType.ADMIN:
+        token = replace_token(uid)
+        url = url_for('autologin', uid=uid, locid=locid, token=token)
+        send_sms(model['telno'], "You're now an admin on the {} beacon. Click to log in: {}".format(locid, request.url_root.rstrip('/') + url), beacon)
+
+    flash('Phone number registered.')
+
+    # TODO: redirect somewhere more convenient
+    return redirect(url_for('alerts', locid=locid))
 
 @app.route('/<locid>/admins/new')
 def new_admin(locid):
@@ -632,11 +688,6 @@ def new_admin(locid):
             flash("{} {}".format(getattr(form, field).label.text, error), 'validation')
 
     return redirect(url_for('admins', locid=locid))
-
-@app.route('/<locid>/bans')
-def bans(locid):
-    users = users_of_type(locid, UserType.BANNED_WASNT_SUBSCRIBED, UserType.BANNED_WAS_SUBSCRIBED)
-    return render_template('users.html', users=users, title="Banned numbers", locid=locid)
 
 if __name__ == '__main__':
     app.run(port=config.port, debug=True)
