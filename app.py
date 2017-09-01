@@ -457,17 +457,52 @@ def blast(text, locid, sender):
     print("[DEBUG] The following message from {} would have blasted to the {} beacon:\n{}".format(sender, locid, text))
     return #TODO
 
-def process():
-    # for each beacon
+@app.route('/p/<secret>')
+def process(secret):
+    '''Process queue and prune old messages. This should be called at regular intervals.'''
 
-        # if `autosend` is enabled for this beacon, blast all REPORT_PENDING
-        # reports whose `reported` time plus the beacon's `autosend_delay` exceeds
-        # the current time
+    if secret != config.processing_key:
+        return forbidden()
 
-        # if `prune` is enabled for this beacon, remove stale alerts
-        #if alert_type in (AlertType.REPORT_RELAYED, AlertType.REPORT_REJECTED, AlertType.WALLOPS_RELAYED):
+    response = ''
+    now = int(datetime.now().timestamp())
 
-    return #TODO
+    # fire off messages that were put in the queue and timed out
+    sql = '''select b.locid, a.text, a.telno, a.id
+             from beacons b inner join alerts a
+             on b.telno = a.beacon
+             where b.autosend_delay is not null
+             and b.autosend_delay > 0
+             and a.alert_type = {}
+             and a.reported + b.autosend_delay < {}
+    '''.format(AlertType.REPORT_PENDING, now)
+
+    stale = get_db().fetchall(sql)
+    queue_msg = "[DEBUG] {} reports timed out and were sent".format(len(stale))
+
+    for locid, text, sender, alert in stale:
+        get_db().update('alerts', {'alert_type': AlertType.REPORT_RELAYED, 'acted': now}, {'id': alert})
+        blast(text, locid, sender)
+
+    now = int(datetime.now().timestamp())
+    prunable = [AlertType.REPORT_RELAYED, AlertType.REPORT_REJECTED, AlertType.WALLOPS_RELAYED]
+    alert_types = tuple(int(at) for at in prunable)
+
+    # delete all messages that have long since been acted upon
+    sql = '''delete a
+             from beacons b inner join alerts a
+             on b.telno = a.beacon
+             where b.prune_delay is not null
+             and b.prune_delay > 0
+             and a.acted is not null
+             and a.alert_type in {}
+             and a.acted + b.prune_delay < {}
+    '''.format(alert_types, now)
+
+    pruned = get_db().execute(sql)
+    prune_msg = "[DEBUG] {} old reports were pruned".format(pruned)
+
+    return "<p>" + "<br />".join([queue_msg, prune_msg]) + "</p>"
 
 @app.route('/beacons/new', methods=['GET', 'POST'])
 @cookie_auth(allow_uids=[ROOT_UID])

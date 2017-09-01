@@ -12,4 +12,5 @@ port = 80
 root_token_lifetime = 5 * 60
 plivo_url_secret_length = 32
 
-flask_secret_key = 'changeme'
+flask_secret_key = 'change me'
+processing_key = 'change me too, but not to the same thing'
