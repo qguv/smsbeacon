@@ -115,9 +115,21 @@ def beacon_telno(locid) -> str:
 
     return get_db().fetchone(sql, locid)[0]
 
+def beacon_autosend_delay(locid) -> int:
+    sql = 'select autosend_delay from beacons where locid = %s'
+    return get_db().fetchone(sql, locid)[0]
+
+def beacon_prune_delay(locid) -> int:
+    sql = 'select prune_delay from beacons where locid = %s'
+    return get_db().fetchone(sql, locid)[0]
+
+def alert_details(aid) -> ('text', 'sender'):
+    sql = 'select text, telno from alerts where id = %s'
+    return get_db().fetchone(sql, aid)
+
 def user_token_lifetime(uid):
     sql = '''select b.token_lifetime
-             from beacon b inner join users u
+             from beacons b inner join users u
              on b.telno = u.beacon
              where u.id=%s'''
 
@@ -375,17 +387,17 @@ def alerts(locid):
     locid = locid.lower()
 
     try:
-        sql = '''select a.text, a.alert_type
+        sql = '''select a.text, a.alert_type, a.id
                  from beacons b inner join alerts a
                  on b.telno = a.beacon
                  where b.locid=%s'''
 
         # build a map from alert type to messages
         d = {}
-        for text, atype in get_db().fetchall(sql, locid):
+        for text, atype, aid in get_db().fetchall(sql, locid):
             atype = AlertType(atype)
             msgs = d.get(atype, [])
-            msgs.append(text)
+            msgs.append((text, aid))
             d[atype] = msgs
 
         return render_template('alerts.html',
@@ -395,26 +407,54 @@ def alerts(locid):
         import traceback; traceback.print_exc() #DEBUG
         return 'No alerts!'
 
+@app.route('/<locid>/alert/<alert>', methods=['PUT'])
+@cookie_auth()
+def put_alert(locid, alert):
+    locid = locid.lower()
+    action = AlertType(int(request.form['status'].strip()))
+
+    text, sender = alert_details(alert)
+
+    if action == AlertType.REPORT_RELAYED:
+        blast(text, locid, sender)
+        flash("Report sent out.")
+
+    elif action == AlertType.REPORT_REJECTED:
+        flash("Report rejected.")
+
+    now = int(datetime.now().timestamp())
+    get_db().update('alerts', {'alert_type': action, 'acted': now}, {'id': alert})
+    return 'OK'
+
 @app.route('/<locid>/alerts/new', methods=['POST'])
 @cookie_auth()
 def new_alert(locid):
     locid = locid.lower()
 
     text = request.form['text'].strip()
-    now = int(datetime.now().timestamp())
-    last_id = get_db().insert_into('alerts',
-            beacon=beacon_telno(locid),
-            telno=user_telno(g.uid),
-            text=text,
-            reported=now,
-            alert_type=AlertType.REPORT_PENDING)
+    sender = user_telno(g.uid)
 
-    blast(last_id)
+    # send immediately if the beacon is so configured
+    autosend_delay = beacon_autosend_delay(locid)
+    if autosend_delay == 0:
+        blast(text, locid, sender)
+        flash("Message sent!")
 
-    flash("Message queued!")
+    # otherwise put it in the queue
+    else:
+        now = int(datetime.now().timestamp())
+        last_id = get_db().insert_into('alerts',
+                beacon=beacon_telno(locid),
+                telno=sender,
+                text=text,
+                reported=now,
+                alert_type=AlertType.REPORT_PENDING)
+        flash("Message queued!")
+
     return redirect(url_for('alerts', locid=locid))
 
-def blast(alert_id):
+def blast(text, locid, sender):
+    print("[DEBUG] The following message from {} would have blasted to the {} beacon:\n{}".format(sender, locid, text))
     return #TODO
 
 def process():

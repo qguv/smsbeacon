@@ -23,7 +23,17 @@ class Database:
     def __init__(self):
         self.db = connect(**database)
 
-    def insert_into(self, table, **kwargs):
+    def execute(self, sql, *values) -> 'rowcount':
+
+        # get string representation, but leave None alone
+        values = [ maybe_call(str, v) for v in values ]
+
+        with self.db.cursor() as c:
+            c.execute(sql, values)
+            self.db.commit()
+            return c.rowcount
+
+    def insert_into(self, table, **kwargs) -> 'new_id':
         keys, values = zip(*kwargs.items())
 
         # get string representation, but leave None alone
@@ -38,13 +48,13 @@ class Database:
         self.db.commit()
         return last_id
 
-    def update(self, table, updates=dict(), wheres=dict()):
+    def update(self, table, updates=dict(), wheres=dict()) -> 'rowcount':
         update_keys, update_values = zip(*updates.items())
         where_keys, where_values = zip(*wheres.items())
 
         # get string representation, but leave None alone
-        update_values = list(map(lambda v: maybe_call(str, v), update_values))
-        where_values = list(map(lambda v: maybe_call(str, v), where_values))
+        update_values = [ maybe_call(str, v) for v in update_values ]
+        where_values = [ maybe_call(str, v) for v in where_values ]
 
         updates = ', '.join( '`{}` = %s'.format(k) for k in update_keys )
         wheres = ' and '.join( '`{}` = %s'.format(k) for k in where_keys )
@@ -66,13 +76,21 @@ class Database:
             return dict(zip(fields, result))
 
     def fetchone(self, sql, *replacements):
+
+        # get string representation, but leave None alone
+        replacements = [ maybe_call(str, r) for r in replacements ]
+
         with self.db.cursor() as c:
-            c.execute(sql, *replacements)
+            c.execute(sql, replacements)
             return c.fetchone()
 
     def fetchall(self, sql, *replacements):
+
+        # get string representation, but leave None alone
+        replacements = [ maybe_call(str, r) for r in replacements ]
+
         with self.db.cursor() as c:
-            c.execute(sql, *replacements)
+            c.execute(sql, replacements)
             return c.fetchall()
 
     def cursor(self):

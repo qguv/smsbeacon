@@ -43,7 +43,7 @@ create table `alerts` (
 
   `text` text not null,
   `reported` bigint unsigned not null,
-  `relayed` bigint unsigned null,
+  `acted` bigint unsigned null,
 
   /* type:
    *   0  -> report_pending
