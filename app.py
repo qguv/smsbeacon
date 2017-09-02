@@ -359,7 +359,7 @@ def beacons():
 
     sql = '''select `nickname`, `locid`, `description`
              from `beacons`'''
-    beacons = [ (nickname, locid.upper(), description, url_for('settings', locid=locid.lower()))
+    beacons = [ (nickname, locid.lower(), description)
                 for nickname, locid, description in get_db().fetchall(sql) ]
     return render_template('beacons.html', beacons=beacons)
 

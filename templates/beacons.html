@@ -9,8 +9,8 @@
 
 {% if beacons %}
 <ul>
-{% for nickname, locid, description, url in beacons %}
-    <li><a href="{{ url }}">{{ nickname }} in {{ locid }}</a></li>
+{% for nickname, locid, description in beacons %}
+    <li><a href="{{ url_for('alerts', locid=locid) }}">{{ nickname }} in {{ locid | upper }}</a></li>
 {% endfor %}
 </ul>
 {% endif %}
