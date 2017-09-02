@@ -6,7 +6,7 @@ _shiny second version with greatly improved administration/investigation!_
 
 ## use
 
-Send a text to a number registered with Plivo, and the beacon will forward it to a set group of investigators. If it's appoved, or not vetoed in a short amount of time, then it will be sent out to all subscribers.
+Send a text to a number registered with Plivo, and the beacon will forward it to a set group of investigators. If it's appoved, or not vetoed after a while, then it will be sent out to all subscribers.
 
 ### sms commands
 
@@ -26,31 +26,34 @@ I ([qguv](https://github.com/qguv)) run a beacon server for community use. If yo
 ### spinning up your own manually
 
 - get a [plivo][] account and buy a number; note your plivo id and auth token
-- clone this repository on a webserver
-- on the server, install python3 and these dependencies with pip3:
-  - flask_wtf
-  - pymysql
-  - passlib
-- spin up a mysql instance, create a new `smsbeacon` database in mysql, and make a user with permission to access and modify it
-- modify config.py to point the app to the database
-- put a random string in `flask_secret_key` (in config.py)
-- run `./init_db.py`, note the URL it gives you
-- run `app.py`; make sure port 80 is publicly accessible
-- go to the URL given in the previous step and set the root password
-- click the link to create a new beacon
-- fill in the information, including the plivo id and auth token from earlier. don't forget to add yourself as an admin!
-- copy the text it gives you and paste it into the plivo number's connected application field
-- text `ping` to the number you registered as an admin; you should get `pong` back if it's working and you're an admin
-- get everyone to subscribe
+- set up the database:
+  - spin up a mysql instance accessable over the public internet
+  - create a new `smsbeacon` database in mysql
+  - make a password-protected user with permission to access and modify the `smsbeacon` database
+- configure AWS for serverless:
+  - `npm install -g serverless serverless-python-requirements`
+  - follow [this doc](https://serverless.com/framework/docs/providers/aws/guide/credentials)
+- deploy the code:
+  - clone this repository on your dev machine
+  - modify `config.py` to reflect your database information
+  - change the `change me` fields in `config.py` to long, random strings ([random.org][] is okay)
+  - `serverless deploy -v`
+- configure your beacon on the site:
+  - run `./init_db.py`, note the URL it gives you
+  - go to the URL given in the previous step and set the root password
+  - click the link to create a new beacon
+  - fill in the information, including the plivo id and auth token from earlier
+  - copy the text it gives you and paste it into the plivo number's connected application field; this is the URL plivo uses to send incoming SMS messages to your beacon
+  - add yourself as an admin and set your own password
+- test it:
+  - from the admin phone number you entered, text `ping` to the number you registered with plivo; if you've done everything right, you should get `pong` back
+  - tell everyone who matters to subscribe
 
-[plivo]: (https://plivo.com/)
+[plivo]: https://plivo.com/
+[random.org]: https://www.random.org/passwords/?num=100&len=32&format=html&rnd=new
 
 ## troubleshooting
 
-First, can you access `http://your-server-ip-or-domain/test` in a browser?
+First, can you access `http://your-server-ip-or-domain/test` in a browser? If so, the code is at least runnable. Check to see if you have a database or Plivo configuration issue.
 
-If the server times out, the server is not running, or else the port is blocked on the server with a firewall or in network hardware, or else there is some server misconfiguration.
-
-If you're getting 403 "forbidden", check permissions, especially of the user running the server. If you're using a port less than 1024, you need to have superuser privileges on most unix systems.
-
-If you're getting 503 "internal server errors", check the output of the process running app.py for more information.
+If you're getting 503 "internal server error", check AWS lambda logs for more information.

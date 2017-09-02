@@ -39,6 +39,7 @@ provider:
 
 plugins:
   - serverless-wsgi
+  - serverless-python-requirements
 
 functions:
   app:
