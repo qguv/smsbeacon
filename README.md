@@ -31,7 +31,7 @@ I ([qguv](https://github.com/qguv)) run a beacon server for community use. If yo
   - create a new `smsbeacon` database in mysql
   - make a password-protected user with permission to access and modify the `smsbeacon` database
 - configure AWS for serverless:
-  - `npm install -g serverless serverless-python-requirements`
+  - `npm install -g serverless serverless-wsgi serverless-python-requirements`
   - follow [this doc](https://serverless.com/framework/docs/providers/aws/guide/credentials)
 - deploy the code:
   - clone this repository on your dev machine
