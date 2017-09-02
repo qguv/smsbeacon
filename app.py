@@ -695,4 +695,4 @@ def post_user(locid):
     return redirect(url_for('subscribers', locid=locid))
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=config.port)
+    app.run(host='0.0.0.0', port=config.port, debug=(config.public_url == 'localhost'))
