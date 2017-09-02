@@ -20,6 +20,7 @@ from flask import Flask, request, render_template, g, url_for, redirect, \
     make_response, get_flashed_messages, flash
 from flask_wtf.csrf import CSRFProtect
 app = Flask(__name__)
+app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.secret_key = config.flask_secret_key
 csrfp = CSRFProtect(app)
 
