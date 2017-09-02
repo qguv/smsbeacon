@@ -8,6 +8,8 @@
 
     {% if locid is defined %}
         <title>{{ beacon_nickname(locid) }} {{ locid }} admin</title>
+    {% elif title_override is defined %}
+        <title>{{ title_override }}</title>
     {% else %}
         <title>smsbeacon admin</title>
     {% endif %}

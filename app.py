@@ -307,6 +307,10 @@ def test():
 
 ## NO INTERACTION
 
+@app.route('/')
+def landing():
+    return render_template('landing.html', title_override="smsbeacon")
+
 @app.route('/<locid>/logout')
 def logout(locid):
     response = redirect(url_for('login', locid=locid.lower()))
