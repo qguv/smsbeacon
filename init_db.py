@@ -16,6 +16,7 @@ from subprocess import check_call
 print("Populating database...", end=' ')
 with open('schema.sql', 'r') as f:
     check_call(['mysql',
+        '--host=' + config.database['host'],
         '--user=' + config.database['user'],
         '--password=' + config.database['password'],
         '--default-character-set=' + config.database['charset'],
