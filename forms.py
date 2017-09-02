@@ -32,8 +32,10 @@ class InClassLength():
             raise ValidationError("too many {} ({} maximum)".format(self.name, self.max))
 
 class InputRequiredIf():
-    '''a wtforms validator which makes a field required if a given different
-    field is set and has a truthy value'''
+    '''A WTForms validator which makes a field required if a given different
+    field is set and has a truthy value. Optionally takes the keyword argument
+    'condition', a lambda function that takes the other field and returns
+    whether input should be required.'''
 
     def __init__(self, other_field_name, *args, **kwargs):
         self.other_field_name = other_field_name
@@ -44,7 +46,10 @@ class InputRequiredIf():
         other_field = form._fields.get(self.other_field_name)
         if other_field is None:
             raise ValidationError('no field named "{}" in form'.format(self.other_field_name))
-        if other_field.data:
+
+        condition = kwargs.pop('condition', lambda x: x)
+
+        if condition(other_field.data):
             InputRequired(*self.args, **self.kwargs)(form, field)
         else:
             Optional(*self.args, **self.kwargs)(form, field)
@@ -55,9 +60,14 @@ choosable_roles = {"Subscriber": UserType.SUBSCRIBED,
 
 class User(FlaskForm):
     telno = StringField("Phone number:", [DataRequired(), InClassLength(string.digits, 'digits', min=10)])
-    password = PasswordField("Phone number:", [DataRequired()])
-    role = SelectField("Role:", choices=[ (str(v), k) for k, v in choosable_roles.items() ])
-    nickname = StringField("Nickname?", [])
+    user_type = SelectField("User type:", choices=[ (ut.name, str(int(ut))) for ut in UserType ])
+    nickname = StringField("Nickname?", [InputRequiredIf('user_type', condition=lambda field: field.data == UserType.ADMIN)])
+
+    def into_db(self):
+        return dict(
+            telno=maybe_call(normal_telno, self.telno.data),
+            user_type=maybe_call(UserType, maybe_call(int, self.user_type.data.strip())),
+            nickname=self.nickname.data.strip())
 
 class Beacon(FlaskForm):
 

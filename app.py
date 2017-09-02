@@ -231,6 +231,16 @@ def change_password(uid, password) -> None or Exception:
         raise Exception("no such user")
 
 def cookie_auth(allow_uids=all_of_them, allow_user_types=[UserType.ADMIN]) -> 'decorator':
+    '''Attempts to authenticate a user based on 'u' and 't' cookies we
+    previously set. On success, the authenticated user's information is stored
+    as a dict in g.auth with the following structure:
+
+    g.auth = {
+        'uid': int,
+        'user_type': UserType,
+    }
+    '''
+
     def wrapper(f):
         @wraps(f)
         def wrapped(*args, **kwargs):
@@ -239,7 +249,7 @@ def cookie_auth(allow_uids=all_of_them, allow_user_types=[UserType.ADMIN]) -> 'd
             beacon_login = redirect(url_for('login', locid=locid))
 
             try:
-                g.uid = int(request.cookies['u'])
+                uid = int(request.cookies['u'])
                 token = request.cookies['t']
             except ValueError:
                 print("malformed cookies") #DEBUG
@@ -250,7 +260,7 @@ def cookie_auth(allow_uids=all_of_them, allow_user_types=[UserType.ADMIN]) -> 'd
                 return beacon_login
 
             try:
-                token_auth(g.uid, token)
+                token_auth(uid, token)
             except TokenExpired:
                 print("token expired") #DEBUG
                 flash("Session expired, please log in again.")
@@ -266,17 +276,18 @@ def cookie_auth(allow_uids=all_of_them, allow_user_types=[UserType.ADMIN]) -> 'd
                 import traceback; traceback.print_exc() #DEBUG
                 return beacon_login
 
-            if g.uid not in allow_uids:
+            if uid not in allow_uids:
                 print("user not allowed")
                 return forbidden()
 
-            if g.uid != ROOT_UID and user_locid(g.uid) != locid:
+            if uid != ROOT_UID and user_locid(uid) != locid:
                 print("logged-in user doesn't belong to this beacon")
                 return beacon_login
 
             try:
-                g.user_type = user_type(g.uid)
-                if g.user_type not in allow_user_types: #TODO combine user db calls
+                #TODO combine user db calls
+                user_type = user_type(uid)
+                if user_type not in allow_user_types:
                     print("user type not allowed")
                     return forbidden()
             except:
@@ -284,6 +295,7 @@ def cookie_auth(allow_uids=all_of_them, allow_user_types=[UserType.ADMIN]) -> 'd
                 import traceback; traceback.print_exc() #DEBUG
                 return beacon_login
 
+            g.auth = dict(uid=uid, user_type=user_type)
             return f(*args, **kwargs)
 
         return wrapped
@@ -434,7 +446,7 @@ def new_alert(locid):
     locid = locid.lower()
 
     text = request.form['text'].strip()
-    sender = user_telno(g.uid)
+    sender = user_telno(g.auth['uid'])
 
     # send immediately if the beacon is so configured
     autosend_delay = beacon_autosend_delay(locid)
@@ -618,48 +630,28 @@ def users(locid, kind, user_types):
 @cookie_auth()
 def patch_user(locid, uid):
     locid = locid.lower()
-    user_type = UserType(int(request.form['user_type'].strip()))
-    get_db().update('users', {'user_type': user_type}, {'id': uid})
 
-    if user_type == UserType.ADMIN:
-        token = replace_token(uid)
-        url = url_for('autologin', uid=uid, locid=locid, token=token)
-        send_sms(user_telno(uid), "You're now an admin on the {} beacon. Click to log in: {}".format(locid, request.url_root.rstrip('/') + url), beacon_telno(locid))
+    try:
+        user_type = UserType(int(request.form['user_type'].strip()))
+        get_db().update('users', {'user_type': user_type}, {'id': uid})
+        flash("User updated.")
+    except:
+        flash("Couldn't update user.")
 
-    flash("User updated.")
+    try:
+        if user_type == UserType.ADMIN:
+            token = replace_token(uid)
+            url = url_for('autologin', uid=uid, locid=locid, token=token)
+            send_sms(user_telno(uid), "You're now an admin on the {} beacon. Click to log in: {}".format(locid, request.url_root.rstrip('/') + url), beacon_telno(locid))
+    except:
+        flash("Couldn't text the new admin their credentials")
+
     return 'OK'
 
 @app.route('/<locid>/user/new', methods=['POST'])
 @cookie_auth()
 def post_user(locid):
     locid = locid.lower()
-    now=int(datetime.now().timestamp())
-    beacon = beacon_telno(locid)
-
-    model = dict(
-        beacon=beacon,
-        telno=normal_telno(request.form['telno']),
-        user_type=UserType(int(request.form['status'].strip())),
-        created=now,
-    )
-
-    if model['user_type'] == UserType.ADMIN:
-        model['nickname'] = request.form['nickname'].strip()
-
-    uid = get_db().insert_into('users', **model)
-
-    if model['user_type'] == UserType.ADMIN:
-        token = replace_token(uid)
-        url = url_for('autologin', uid=uid, locid=locid, token=token)
-        send_sms(model['telno'], "You're now an admin on the {} beacon. Click to log in: {}".format(locid, request.url_root.rstrip('/') + url), beacon)
-
-    flash('Phone number registered.')
-
-    # TODO: redirect somewhere more convenient
-    return redirect(url_for('alerts', locid=locid))
-
-@app.route('/<locid>/admins/new')
-def new_admin(locid):
     form = forms.User()
 
     # if it's a POST request and the form validates correctly
@@ -669,30 +661,38 @@ def new_admin(locid):
         try:
             user_uid(locid, form.telno.data)
             flash("There's already a user with that phone number!")
-            return redirect(url_for('admins', locid=locid))
+            return redirect(request.url)
         except:
             pass
 
-        try:
-            now = int(datetime.now().timestamp())
-            get_db().insert_into('users',
-                    beacon=beacon_telno(locid),
-                    telno=form.telno.data,
-                    nickname='' if form.nickname.data is not None else form.nickname.data,
-                    user_type=UserType.ADMIN,
-                    phash=crypto.hash(password),
-                    created=now)
-            flash("User created")
-        except:
-            flash("Couldn't create user")
+        beacon = beacon_telno(locid)
+        now=int(datetime.now().timestamp())
 
+        model = form.into_db()
+        model['created'] = now
+        model['beacon'] = beacon
+
+        try:
+            uid = get_db().insert_into('users', **model)
+            flash('Phone number registered')
+        except:
+            flash("Couldn't register number")
+
+        if model['user_type'] == UserType.ADMIN:
+            try:
+                token = replace_token(uid)
+                url = url_for('autologin', uid=uid, locid=locid, token=token)
+                send_sms(model['telno'], "You're now an admin on the {} beacon. Click to log in: {}".format(locid, request.url_root.rstrip('/') + url), beacon)
+            except:
+                flash("Couldn't text the new admin their credentials")
 
     # if validation failed, inform the user
     for field, errors in form.errors.items():
         for error in errors:
             flash("{} {}".format(getattr(form, field).label.text, error), 'validation')
 
-    return redirect(url_for('admins', locid=locid))
+    # TODO: redirect somewhere better
+    return redirect(url_for('subscribers', locid=locid))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=config.port)
