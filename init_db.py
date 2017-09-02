@@ -35,4 +35,9 @@ db.insert_into('users',
     thash=crypto.hash(root_token),
     token_expires= now + config.root_token_lifetime,
     created=now)
-print("Done!\n\nRoot user initialized. Run the app with ./app.py, then set the root password at:\nhttp://localhost:5000/root/login/" + root_token)
+
+url = config.public_url
+if config.port != 80:
+    url += ":{}".format(config.port)
+
+print("Done!\n\nRoot user initialized. Run the app with ./app.py, then set the root password at:\nhttp://{}/root/login/{}".format(url, root_token))

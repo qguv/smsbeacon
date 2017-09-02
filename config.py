@@ -7,6 +7,9 @@ database = dict(host="localhost",
                 password="changeme",
                 charset='utf8mb4')
 
+# publicly accessible URL or IP used to access the site on the internet,
+# without http(s):// prefix
+public_url = "localhost"
 port = 80
 
 root_token_lifetime = 5 * 60
