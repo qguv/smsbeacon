@@ -603,16 +603,16 @@ def settings(locid):
 def sms(locid, secret):
     return render_template('todo.html', locid=locid) # TODO
 
-@app.route('/<locid>/subscribers', endpoint='subscribers', defaults={'title': 'Subscribers', 'user_types': [UserType.SUBSCRIBED]})
-@app.route('/<locid>/admins', endpoint='admins', defaults={'title': 'Admins', 'user_types': [UserType.ADMIN]})
-@app.route('/<locid>/bans', endpoint='bans', defaults={'title': 'Bans', 'user_types': [UserType.BANNED_WASNT_SUBSCRIBED, UserType.BANNED_WAS_SUBSCRIBED]})
+@app.route('/<locid>/subscribers', endpoint='subscribers', defaults={'kind': 'Subscribers', 'user_types': [UserType.SUBSCRIBED]})
+@app.route('/<locid>/admins', endpoint='admins', defaults={'kind': 'Admins', 'user_types': [UserType.ADMIN]})
+@app.route('/<locid>/bans', endpoint='bans', defaults={'kind': 'Bans', 'user_types': [UserType.BANNED_WASNT_SUBSCRIBED, UserType.BANNED_WAS_SUBSCRIBED]})
 @cookie_auth()
-def users(locid, title, user_types):
+def users(locid, kind, user_types):
     '''The first user in the user_types array is used as the type of new users
     created from this page.'''
 
     users = users_of_type(locid, *user_types)
-    return render_template('users.html', users=users, title=title, locid=locid, user_types=user_types)
+    return render_template('users.html', users=users, kind=kind, locid=locid, user_types=user_types)
 
 @app.route('/<locid>/users/<uid>', methods=['PATCH'])
 @cookie_auth()

@@ -1,29 +1,31 @@
 {% extends 'es6.html' %}
 {% block content %}
 
-<h2>{{ title }}</h2>
-<form action="{{ url_for('post_user', locid=locid) }}" method="post" style="display: hidden;">
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-<input type="hidden" name="status" value="{{ user_types[0] }}" />
+<h2>{{ kind }}</h2>
 
-Phone number:
-<br />
-<input type="text" name="telno" />
-<br />
+<a id="show-user-form" onclick="show_user_form()" href="javascript:void(0)">Make new</a>
 
-{% if user_types[0] == UserType.ADMIN %}
-Name:
-<br />
-<input type="text" name="nickname" />
-<br />
+<form id="user-form" action="{{ url_for('post_user', locid=locid) }}" method="post" style="display:none;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+    <input type="hidden" name="status" value="{{ user_types[0] }}" />
 
-<input type="submit" value="{{ 'Make admin' }}" />
-{% elif user_types[0] == UserType.SUBSCRIBED %}
-<input type="submit" value="{{ 'Subscribe' }}" />
-{% elif user_types[0] == UserType.BANNED_WASNT_SUBSCRIBED %}
-<input type="submit" value="{{ 'Ban' }}" />
-{% endif %}
+    Phone number:
+    <br />
+    <input type="text" name="telno" />
+    <br />
 
+    {% if user_types[0] == UserType.ADMIN %}
+        Name:
+        <br />
+        <input type="text" name="nickname" />
+        <br />
+
+        <input type="submit" value="{{ 'Make admin' }}" />
+    {% elif user_types[0] == UserType.SUBSCRIBED %}
+        <input type="submit" value="{{ 'Subscribe' }}" />
+    {% elif user_types[0] == UserType.BANNED_WASNT_SUBSCRIBED %}
+        <input type="submit" value="{{ 'Ban' }}" />
+    {% endif %}
 </form>
 <ul>
 
@@ -79,7 +81,7 @@ Name:
 
 <script>
 function patch_user(url, user_type) {
-    let fd = new FormData();
+    const fd = new FormData();
     fd.append('user_type', user_type);
     fd.append('csrf_token', '{{ csrf_token() }}');
 
@@ -89,6 +91,11 @@ function patch_user(url, user_type) {
         credentials: 'include',
         headers: new Headers()
     }).then(_ => location.reload());
+}
+
+function show_user_form() {
+    document.getElementById('user-form').style.display = 'block';
+    document.getElementById('show-user-form').style.display = 'none';
 }
 </script>
 {% endblock %}
