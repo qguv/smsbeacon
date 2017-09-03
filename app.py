@@ -629,7 +629,7 @@ def settings(locid):
             post_to=url_for('settings', locid=locid))
 
 @app.route('/<locid>/sms/<secret>')
-def sms(locid, secret):
+def incoming_sms(locid, secret):
     return render_template('todo.html', locid=locid) # TODO
 
 @app.route('/<locid>/subscribers', endpoint='subscribers', defaults={'kind': 'Subscribers', 'user_types': [UserType.SUBSCRIBED]})
