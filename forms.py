@@ -33,9 +33,7 @@ class InClassLength():
 
 class InputRequiredIf():
     '''A WTForms validator which makes a field required if a given different
-    field is set and has a truthy value. Optionally takes the keyword argument
-    'condition', a lambda function that takes the other field and returns
-    whether input should be required.'''
+    field is set and has a truthy value.'''
 
     def __init__(self, other_field_name, *args, **kwargs):
         self.other_field_name = other_field_name
@@ -47,9 +45,7 @@ class InputRequiredIf():
         if other_field is None:
             raise ValidationError('no field named "{}" in form'.format(self.other_field_name))
 
-        condition = self.kwargs.pop('condition', lambda x: x)
-
-        if condition(other_field.data):
+        if other_field.data:
             InputRequired(*self.args, **self.kwargs)(form, field)
         else:
             Optional(*self.args, **self.kwargs)(form, field)
@@ -58,16 +54,18 @@ class User(FlaskForm):
     telno = StringField("Phone number:", [DataRequired(), InClassLength(string.digits, 'digits', min=10)])
 
     user_type = SelectField("User type:",
-        choices=[ (ut, ut.name) for ut in UserType ],
-        coerce=lambda data: maybe_call(UserType, maybe_call(int, maybe_call(lambda x: x.strip(), data))))
+        choices=[ (int(ut), ut.name) for ut in UserType ],
+        coerce=lambda data: maybe_call(int, maybe_call(lambda x: x.strip(), data)))
 
-    nickname = StringField("Nickname:", [InputRequiredIf(
-        'user_type',
-        condition=lambda ut: str(ut) == str(UserType.ADMIN) )])
+    nickname = StringField("Nickname:")
+    def validate_nickname(form, field):
+        if form.user_type.data == UserType.ADMIN and not field.data:
+            raise ValidationError("Admins must be named so we can attribute actions to them")
 
-    ban_reason = StringField("Reason:", [InputRequiredIf(
-        'user_type',
-        condition=lambda ut: str(ut) in [ str(bt) for bt in (UserType.BANNED_WASNT_SUBSCRIBED, UserType.BANNED_WAS_SUBSCRIBED) ])])
+    ban_reason = StringField("Reason:")
+    def validate_ban_reason(form, field):
+        if form.user_type.data in (UserType.BANNED_WAS_SUBSCRIBED, UserType.BANNED_WASNT_SUBSCRIBED) and not field.data:
+            raise ValidationError("Bans require a reason to keep other admins in the loop")
 
     def into_db(self):
         return dict(
