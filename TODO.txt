@@ -1,0 +1,10 @@
+- trigger lambda via custom url
+  - set up ssl cert with aws certificate mgr
+  - set custom url in aws api gateway settings
+- actually send out texts
+- actually respond to texts
+- get `process(...)` called: https://stackoverflow.com/questions/41557956/can-you-trigger-an-aws-lambda-on-a-dynamic-timer
+- soft migration test, old to new
+- make web ui halfway decent
+- more queueing options
+- extensive api documentation
