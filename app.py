@@ -389,7 +389,9 @@ def login(locid):
             response = redirect(url_for('root'))
 
         else:
-            telno = normal_telno(request.form['telno'].strip())
+            telno = request.form['telno'].strip()
+            if telno != 'root':
+                telno = normal_telno(telno)
             password_auth(locid, telno, password)
             uid = user_uid(locid, telno)
             response = redirect(url_for('alerts', locid=locid))
