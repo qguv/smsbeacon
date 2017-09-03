@@ -1,36 +1,14 @@
 {% extends 'base.html' %}
 
 {% block menu %}
+<ul>
+<li>root settings</li>
+<li><a href="{{ url_for('beacons') }}">Deployed beacons</a></li>
+<li><a href="{{ url_for('new_beacon') }}">Deploy a new beacon</a></li>
+<li><a href="javascript:void(0)" onclick="change_password(prompt('New password'))">Change password</a></li>
+<li><a href="{{ url_for('logout', locid='root') }}">Log out</a></li>
+</ul>
 {% endblock menu %}
 
 {% block content %}
-
-{% if not force_password_reset %}
-<ul>
-<li><a href="{{ url_for('beacons') }}">Deployed beacons</a></li>
-<li><a href="{{ url_for('new_beacon') }}">Deploy a new beacon</a></li>
-<li><a href="javascript:void(0)" onclick="show_password_form()">Change password</a></li>
-<li><a href="{{ url_for('logout', locid='root') }}">Log out</a></li>
-</ul>
-{% endif %}
-
-<form id="password_form" action="{{ url_for('root') }}" method="post" {% if not force_password_reset %} hidden {% endif %}>
-
-<input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-
-New password:
-<br />
-<input type="password" name="password" autofocus/>
-<br />
-<input type="submit" value="Submit" />
-</form>
-
-{% if not force_password_reset %}
-<script>
-function show_password_form() {
-	document.getElementById('password_form').style.display = 'block';
-}
-</script>
-{% endif %}
-
 {% endblock %}

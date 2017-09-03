@@ -40,4 +40,5 @@ url = config.public_url
 if config.port != 80:
     url += ":{}".format(config.port)
 
-print("Done!\n\nRoot user initialized. Run the app with ./app.py, then set the root password at:\nhttp://{}/root/login/{}".format(url, root_token))
+sudo = 'sudo ' if config.port < 1024 else ''
+print("Done!\n\nRoot user initialized. Run the app with:\n  {}python3 app.py\nthen set the root password at:\n  http://{}/root/login/{}".format(sudo, url, root_token))

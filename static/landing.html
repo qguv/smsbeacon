@@ -1,0 +1,129 @@
+<!doctype html>
+<html>
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>.: smsbeacon :.</title>
+
+    <style>
+    @import url(https://fonts.googleapis.com/css?family=Ubuntu:300);
+
+    .pulsar {
+        background: #FF594C;
+        border: 0;
+        border-radius: 50%;
+        width: 25px;
+        height: 25px;
+        display: inline-block;
+        color: #fff;
+        outline: none;
+        position: relative;
+        margin-bottom: 25px;
+    }
+
+    .pulsar::before {
+        content: '';
+        display: inline-block;
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        top: 0;
+        left: 0;
+    }
+
+    .pulsar::before {
+        -webkit-animation: sonar-effect 2s ease-in-out .1s infinite;
+                        animation: sonar-effect 2s ease-in-out .1s infinite;
+    }
+
+    @-webkit-keyframes sonar-effect {
+        0% {
+            opacity: 0.3;
+        }
+        20% {
+            opacity: 0.5;
+            box-shadow: 0 0 0 5px #fff, 0 0 10px 10px #fff, 0 0 0 10px #fff;
+        }
+        50% {
+            box-shadow: 0 0 0 5px #fff, 0 0 10px 10px #fff, 0 0 0 10px #fff;
+            -webkit-transform: scale(1.5);
+                            transform: scale(1.5);
+            opacity: 0;
+        }
+        100% {
+            opacity: 0;
+        }
+    }
+
+    @keyframes sonar-effect {
+        0% {
+            opacity: 0.3;
+        }
+        20% {
+            opacity: 0.5;
+            box-shadow: 0 0 0 2px #fff, 0 0 4px 4px #fff, 0 0 0 4px #fff;
+        }
+        50% {
+            box-shadow: 0 0 0 2px #fff, 0 0 4px 4px #fff, 0 0 0 4px #fff;
+            -webkit-transform: scale(3);
+                            transform: scale(3);
+            opacity: 0;
+        }
+        100% {
+            opacity: 0;
+        }
+    }
+
+    .container {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 100%;
+        -webkit-transform: translate(-50%, -50%);
+                        transform: translate(-50%, -50%);
+    }
+
+    .txt {
+        display: block;
+    }
+
+    a, a:visited {
+        color: #add8e6;
+        font-size: 75%;
+    }
+
+    span {
+        text-transform: uppercase;
+        letter-spacing: 0.2em;
+        font-size: 1.3em;
+        font-weight: 300;
+    }
+
+    body {
+        font-family: Ubuntu, Futura, 'Noto Sans', Helvetica, Arial, sans-serif;
+        background-color: #1a1a1a;
+        color: #fefefe;
+        text-rendering: optimizeLegibility;
+        text-align: center;
+    }
+
+    p {
+        margin-top: 0.5em;
+    }
+
+    </style>
+</head>
+
+<body>
+    <div class="container">
+
+        <!-- pulsing circle style courtesy of Tiep Phan: https://codepen.io/tieppt/pen/vKJNaE -->
+        <button class="pulsar"></button>
+
+        <span class="txt">smsbeacon</span>
+        <p>Emergency alert broadcasting system.</p>
+
+        <a href="https://github.com/qguv/smsbeacon">source on Github</a>
+    </div>
+</body>

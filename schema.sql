@@ -44,6 +44,7 @@ create table `alerts` (
   `text` text not null,
   `reported` bigint unsigned not null,
   `acted` bigint unsigned null,
+  /* TODO: acted on by whom? */
 
   /* type:
    *   0  -> report_pending
@@ -62,6 +63,8 @@ create table `users` (
 
   `beacon` varchar(16) not null,
   `telno` varchar(16) not null,
+
+  /* never on users with user_type not_subscribed or subscribed */
   `nickname` varchar(16) null,
 
   /* user_type:
@@ -73,10 +76,16 @@ create table `users` (
    * >4 -> [reserved] */
   `user_type` tinyint unsigned not null,
 
+  /* TODO: who last changed their user_type? */
+
+  /* only on banned users */
+  `ban_reason` text null,
+
   /* for an admin: how many reports has this admin rejected/relayed
    * for anyone else: how many of their reports have been rejected/relayed */
   `rejected` int not null default 0,
   `relayed` int not null default 0,
+  /* TODO: recently active? */
 
   /* password hash and salt */
   `phash` blob null,

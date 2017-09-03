@@ -51,8 +51,8 @@ def user_locid(uid) -> 'locid' or Exception:
         return 'root'
 
     sql = '''select b.locid
-             from users u inner join beacon b
-             where u.uid=%s'''
+             from users u inner join beacons b
+             where u.id = %s'''
 
     return get_db().fetchone(sql, uid)[0].lower()
 
@@ -61,8 +61,8 @@ def user_uid(locid, telno) -> 'uid' or Exception:
     if 'root' in (locid, telno):
         return ROOT_UID
 
-    sql = '''select u.uid
-             from users u inner join beacon b
+    sql = '''select u.id
+             from users u inner join beacons b
              on u.beacon = b.telno
              where b.locid=%s and u.telno=%s'''
 
@@ -74,7 +74,7 @@ def user_telno(uid) -> 'telno' or Exception:
 
     sql = '''select telno
              from users u
-             where id=%s'''
+             where id = %s'''
 
     return get_db().fetchone(sql, uid)[0]
 
@@ -84,19 +84,26 @@ def user_type(uid) -> UserType or Exception:
 
     sql = '''select user_type
              from users u
-             where id=%s'''
+             where id = %s'''
 
     return UserType(get_db().fetchone(sql, uid)[0])
 
 def users_of_type(locid, *user_types) -> {"telno": ('id', 'nickname', 'user_type')} or None:
-    sql = '''select u.telno, u.id, u.nickname, u.user_type
+    sql = '''select u.telno, u.id, u.user_type, u.nickname, u.ban_reason
              from users u inner join beacons b
              on u.beacon = b.telno
              where b.locid = %s
              and u.user_type in ({})
     '''.format(','.join(str(ut) for ut in user_types))
 
-    return { telno: (uid, nickname, user_type) for telno, uid, nickname, user_type in get_db().fetchall(sql, locid) }
+    return { t[0]: t[1:] for t in get_db().fetchall(sql, locid) }
+
+def delete_user(uid):
+    try:
+        sql = '''delete from users where uid = %s'''
+        return bool(get_db().execute(sql, uid))
+    except:
+        return False
 
 def beacon_nickname(locid) -> str:
     sql = '''select nickname
@@ -197,7 +204,7 @@ def password_auth(locid, telno, password) -> None or Exception:
         return root_password_auth(password)
 
     sql = '''select u.phash
-             from users u left join beacon b
+             from users u left join beacons b
              on u.beacon = b.telno
              where b.locid=%s and u.telno=%s'''
 
@@ -206,18 +213,13 @@ def password_auth(locid, telno, password) -> None or Exception:
     if not crypto.verify(password, phash):
         raise Exception("password doesn't match")
 
-def root_password_set() -> bool:
+def password_set(uid) -> bool:
+    sql = '''select id
+             from users
+             where id=%s and phash is not null'''
     try:
-        sql = '''select id
-                 from users
-                 where id=%s and phash is not null'''
-
-        with get_db().cursor() as c:
-            c.execute(sql, (ROOT_UID))
-            return bool(c.rowcount)
-
-    except Exception as e:
-        print('root_password_set()', e) # DEBUG
+        return bool(get_db().execute(sql, uid))
+    except:
         return False
 
 def change_password(uid, password) -> None or Exception:
@@ -278,7 +280,7 @@ def cookie_auth(allow_uids=all_of_them, allow_user_types=[UserType.ADMIN]) -> 'd
 
             if uid not in allow_uids:
                 print("user not allowed")
-                return forbidden()
+                return beacon_login
 
             if uid != ROOT_UID and user_locid(uid) != locid:
                 print("logged-in user doesn't belong to this beacon")
@@ -286,16 +288,16 @@ def cookie_auth(allow_uids=all_of_them, allow_user_types=[UserType.ADMIN]) -> 'd
 
             try:
                 #TODO combine user db calls
-                user_type = user_type(uid)
-                if user_type not in allow_user_types:
+                ut = user_type(uid)
+                if ut not in allow_user_types:
                     print("user type not allowed")
-                    return forbidden()
+                    return beacon_login
             except:
                 print("couldn't get type for user")
                 import traceback; traceback.print_exc() #DEBUG
                 return beacon_login
 
-            g.auth = dict(uid=uid, user_type=user_type)
+            g.auth = dict(uid=uid, user_type=ut)
             return f(*args, **kwargs)
 
         return wrapped
@@ -321,7 +323,7 @@ def test():
 
 @app.route('/')
 def landing():
-    return render_template('landing.html', title_override="smsbeacon")
+    return app.send_static_file('landing.html')
 
 @app.route('/<locid>/logout')
 def logout(locid):
@@ -332,18 +334,21 @@ def logout(locid):
 @app.route('/<locid>/login/<int:uid>/<token>')
 @app.route('/root/login/<token>', defaults={'locid': 'root', 'uid': ROOT_UID})
 def autologin(locid, uid, token):
-
-    # FIXME: can't log in as non-root user
-
     locid = locid.lower()
     try:
         token_auth(uid, token)
         print("successfully authenticated through URL") # DEBUG
-        response = redirect(url_for('root') if uid == ROOT_UID else url_for('alerts', locid=locid))
+
+        if not password_set(uid):
+            response = redirect(url_for('first_login', locid=locid))
+        else:
+            response = redirect(url_for('root') if uid == ROOT_UID else url_for('alerts', locid=locid))
+
         response.set_cookie('u', str(uid))
         response.set_cookie('t', replace_token(uid))
-        # TODO: force password change on non-root login
+
         return response
+
     except Exception as e:
         print('autologin()', e) # DEBUG
         print("URL auth failed") # DEBUG
@@ -351,19 +356,11 @@ def autologin(locid, uid, token):
 
 ## ROOT-ONLY
 
-@app.route('/root', methods=['GET', 'POST'])
+@app.route('/root')
 @cookie_auth(allow_uids=[ROOT_UID])
 def root():
     # TODO: merge with settings() route
-    if request.method == 'GET':
-        force_password_reset = not root_password_set()
-        if force_password_reset:
-            flash("Welcome! Please set the root password.", 'info')
-        return render_template('root.html', force_password_reset=force_password_reset)
-
-    password = request.form['password']
-    change_password(ROOT_UID, password)
-    return redirect(url_for('root'))
+    return render_template('root.html', locid='root', title_override="root settings")
 
 @app.route('/beacons')
 @cookie_auth(allow_uids=[ROOT_UID])
@@ -375,13 +372,14 @@ def beacons():
                 for nickname, locid, description in get_db().fetchall(sql) ]
     return render_template('beacons.html', beacons=beacons)
 
-## ROOT-ONLY
+## LOGGING IN
 
 @app.route('/<locid>/login', methods=['GET', 'POST'])
 def login(locid):
     locid = locid.lower()
     if request.method == 'GET':
         return render_template('login.html', locid=locid)
+
     try:
         password = request.form['password']
 
@@ -391,7 +389,7 @@ def login(locid):
             response = redirect(url_for('root'))
 
         else:
-            telno = request.form['telno']
+            telno = normal_telno(request.form['telno'].strip())
             password_auth(locid, telno, password)
             uid = user_uid(locid, telno)
             response = redirect(url_for('alerts', locid=locid))
@@ -400,7 +398,13 @@ def login(locid):
         response.set_cookie('t', replace_token(uid))
         return response
     except:
+        import traceback; traceback.print_exc() #DEBUG
         return redirect(url_for('login', locid=locid))
+
+@app.route('/<locid>/first-login')
+@cookie_auth()
+def first_login(locid):
+    return render_template('first_login.html', locid=locid)
 
 @app.route('/<locid>')
 def locid_root(locid):
@@ -467,24 +471,32 @@ def new_alert(locid):
 
     return redirect(url_for('alerts', locid=locid))
 
-@app.route('/<locid>/alert/<alert>', methods=['PATCH'])
+@app.route('/<locid>/alert/<int:alert>', methods=['PATCH'])
 @cookie_auth()
 def patch_alert(locid, alert):
     locid = locid.lower()
-    action = AlertType(int(request.form['status'].strip()))
+    new_alert_type = AlertType(int(request.form['alert_type'].strip()))
 
     text, sender = alert_details(alert)
 
-    if action == AlertType.REPORT_RELAYED:
+    if new_alert_type == AlertType.REPORT_RELAYED:
         blast(text, locid, sender)
         flash("Report sent out.")
 
-    elif action == AlertType.REPORT_REJECTED:
+    elif new_alert_type == AlertType.REPORT_REJECTED:
         flash("Report rejected.")
 
-    now = int(datetime.now().timestamp())
-    get_db().update('alerts', {'alert_type': action, 'acted': now}, {'id': alert})
+    change_alert_type(alert, new_alert_type, g.auth['uid'])
     return 'OK'
+
+def change_alert_type(aid, action, uid):
+    now = int(datetime.now().timestamp())
+    get_db().update('alerts', {'alert_type': action, 'acted': now}, {'id': aid})
+
+    if action == AlertType.REPORT_RELAYED:
+        get_db().execute('update users set relayed = relayed + 1 where id = %s', uid)
+    elif action == AlertType.REPORT_RELAYED:
+        get_db().execute('update users set rejected = rejected + 1 where id = %s', uid)
 
 @app.route('/p/<secret>')
 def process(secret):
@@ -622,24 +634,53 @@ def sms(locid, secret):
 def users(locid, kind, user_types):
     '''The first user in the user_types array is used as the type of new users
     created from this page.'''
-
     users = users_of_type(locid, *user_types)
     return render_template('users.html', users=users, kind=kind, locid=locid, user_types=user_types)
 
-@app.route('/<locid>/users/<uid>', methods=['PATCH'])
+@app.route('/<locid>/users/<int:uid>', methods=['PATCH'])
 @cookie_auth()
 def patch_user(locid, uid):
     locid = locid.lower()
 
+    # if you're changing your password, you don't get to change anything else
+    if 'password' in request.form:
+        if uid != g.auth['uid']:
+            return forbidden()
+
+        try:
+            change_password(uid, request.form['password'])
+            flash("Password updated!")
+            return 'OK'
+        except:
+            flash("Couldn't update password.")
+
     try:
-        user_type = UserType(int(request.form['user_type'].strip()))
-        get_db().update('users', {'user_type': user_type}, {'id': uid})
+        new_user_type = UserType(int(request.form['user_type'].strip()))
+        updates = {'user_type': new_user_type}
+
+        # TODO: gracefully enforce that all admins must have nicknames
+        if new_user_type == UserType.ADMIN:
+            updates['nickname'] = request.form['nickname'].strip()
+
+        # clear out the nickname for all normal users
+        elif new_user_type in (UserType.SUBSCRIBED, UserType.NOT_SUBSCRIBED):
+            updates['nickname'] = None
+
+        # TODO: gracefully enforce that all banned users must have a ban_reason
+        if new_user_type in (UserType.BANNED_WASNT_SUBSCRIBED, UserType.BANNED_WAS_SUBSCRIBED):
+            updates['ban_reason'] = request.form['ban_reason'].strip()
+
+        # clear out the ban_reason for unbanned users
+        else:
+            updates['ban_reason'] = None
+
+        get_db().update('users', updates, {'id': uid})
         flash("User updated.")
     except:
         flash("Couldn't update user.")
 
     try:
-        if user_type == UserType.ADMIN:
+        if new_user_type == UserType.ADMIN:
             token = replace_token(uid)
             url = url_for('autologin', uid=uid, locid=locid, token=token)
             send_sms(user_telno(uid), "You're now an admin on the {} beacon. Click to log in: {}".format(locid, request.url_root.rstrip('/') + url), beacon_telno(locid))
@@ -648,20 +689,26 @@ def patch_user(locid, uid):
 
     return 'OK'
 
-@app.route('/<locid>/user/new', methods=['POST'])
+@app.route('/<locid>/users/new', methods=['POST'])
 @cookie_auth()
 def post_user(locid):
     locid = locid.lower()
     form = forms.User()
 
+    # TODO: redirect somewhere better
+    back = redirect(url_for('subscribers', locid=locid))
+
     # if it's a POST request and the form validates correctly
     if form.validate_on_submit():
 
-        # check if user exists
+        # if the user already exists in this beacon, delete and start over
         try:
-            user_uid(locid, form.telno.data)
-            flash("There's already a user with that phone number!")
-            return redirect(request.url)
+            uid = user_uid(locid, form.telno.data)
+            try:
+                delete_user(uid)
+            except:
+                flash("There's already a user with that phone number, and I can't delete them!")
+                return back
         except:
             pass
 
@@ -677,22 +724,24 @@ def post_user(locid):
             flash('Phone number registered')
         except:
             flash("Couldn't register number")
+            return back
 
         if model['user_type'] == UserType.ADMIN:
             try:
                 token = replace_token(uid)
                 url = url_for('autologin', uid=uid, locid=locid, token=token)
                 send_sms(model['telno'], "You're now an admin on the {} beacon. Click to log in: {}".format(locid, request.url_root.rstrip('/') + url), beacon)
+                flash("Sent a text with a login link to the new admin")
             except:
                 flash("Couldn't text the new admin their credentials")
+                return back
 
     # if validation failed, inform the user
     for field, errors in form.errors.items():
         for error in errors:
             flash("{} {}".format(getattr(form, field).label.text, error), 'validation')
 
-    # TODO: redirect somewhere better
-    return redirect(url_for('subscribers', locid=locid))
+    return back
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=config.port, debug=(config.public_url == 'localhost'))

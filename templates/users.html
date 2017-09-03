@@ -1,4 +1,4 @@
-{% extends 'es6.html' %}
+{% extends 'base.html' %}
 {% block content %}
 
 <h2>{{ kind }}</h2>
@@ -7,7 +7,7 @@
 
 <form id="user-form" action="{{ url_for('post_user', locid=locid) }}" method="post" style="display:none;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-    <input type="hidden" name="status" value="{{ user_types[0] }}" />
+    <input type="hidden" name="user_type" value="{{ user_types[0] }}" />
 
     Phone number:
     <br />
@@ -20,62 +20,77 @@
         <input type="text" name="nickname" />
         <br />
 
-        <input type="submit" value="{{ 'Make admin' }}" />
-    {% elif user_types[0] == UserType.SUBSCRIBED %}
-        <input type="submit" value="{{ 'Subscribe' }}" />
+        <input type="submit" value="Make admin" />
     {% elif user_types[0] == UserType.BANNED_WASNT_SUBSCRIBED %}
-        <input type="submit" value="{{ 'Ban' }}" />
+        Reason:
+        <br />
+        <textarea name="ban_reason"></textarea>
+        <br />
+
+        <input type="submit" value="Ban" />
+    {% elif user_types[0] == UserType.SUBSCRIBED %}
+        <input type="submit" value="Subscribe" />
     {% endif %}
 </form>
 <ul>
 
-    {% for telno, (uid, nickname, user_type) in users.items() %}
-        {% if nickname is not none %}
-            <li>{{ nickname }} ({{ telno }})</li>
+    {% for telno, (uid, user_type, nickname, ban_reason) in users.items() %}
+        {% if nickname %}
+            {% if ban_reason %}
+                <li>{{ nickname }} ({{ telno }})<br />Ban reason: {{ ban_reason }}</li>
+            {% else %}
+                <li>{{ nickname }} ({{ telno }})</li>
+            {% endif %}
         {% else %}
-            <li>{{ telno }}</li>
+            {% if ban_reason %}
+                <li>{{ telno }}<br />Ban reason: {{ ban_reason }}</li>
+            {% else %}
+                <li>{{ telno }}</li>
+            {% endif %}
         {% endif %}
-        <ul>
+        {% if uid != g.auth['uid'] %}
+            <ul>
 
-            {% if user_type == UserType.SUBSCRIBED %}
-            <li>
-                <button onclick="patch_user('{{ url_for('patch_user', locid=locid, uid=uid) }}', {{ UserType.NOT_SUBSCRIBED }})">
-                    Unsubscribe
-                </button>
-            </li>
+                {% if user_type == UserType.SUBSCRIBED %}
+                <li>
+                    <button onclick="patch_user('{{ url_for('patch_user', locid=locid, uid=uid) }}', {{ UserType.NOT_SUBSCRIBED }})">
+                        Unsubscribe
+                    </button>
+                </li>
 
-            <li>
-                <button onclick="patch_user('{{ url_for('patch_user', locid=locid, uid=uid) }}', {{ UserType.ADMIN }})">
-                    Make admin
-                </button>
-            </li>
-            {% endif %}
+                <li>
+                    <button onclick="patch_user('{{ url_for('patch_user', locid=locid, uid=uid) }}', {{ UserType.ADMIN }})">
+                        Make admin
+                    </button>
+                </li>
+                {% endif %}
 
-            {% if user_type in (UserType.BANNED_WAS_SUBSCRIBED, UserType.BANNED_WASNT_SUBSCRIBED) %}
-            <li>
-                <button onclick="patch_user('{{ url_for('patch_user', locid=locid, uid=uid) }}', {{ UserType.SUBSCRIBED if user_type == UserType.BANNED_WAS_SUBSCRIBED else UserType.NOT_SUBSCRIBED }})">
-                    Unban
-                </button>
-            </li>
-            {% endif %}
+                {% if user_type in (UserType.BANNED_WAS_SUBSCRIBED, UserType.BANNED_WASNT_SUBSCRIBED) %}
+                <li>
+                    <button onclick="patch_user('{{ url_for('patch_user', locid=locid, uid=uid) }}', {{ UserType.SUBSCRIBED if user_type == UserType.BANNED_WAS_SUBSCRIBED else UserType.NOT_SUBSCRIBED }})">
+                        Unban
+                    </button>
+                </li>
+                {% endif %}
 
-            {% if user_type in (UserType.ADMIN, UserType.SUBSCRIBER) %}
-            <li>
-                <button onclick="patch_user('{{ url_for('patch_user', locid=locid, uid=uid) }}', {{ UserType.BANNED_WAS_SUBSCRIBED }})">
-                    Ban
-                </button>
-            </li>
-            {% endif %}
+                {% if user_type in (UserType.ADMIN, UserType.SUBSCRIBED) %}
+                <li>
+                    <button onclick="patch_user('{{ url_for('patch_user', locid=locid, uid=uid) }}', {{ UserType.BANNED_WAS_SUBSCRIBED }})">
+                        Ban
+                    </button>
+                </li>
+                {% endif %}
 
-            {% if user_type == UserType.ADMIN %}
-            <li>
-                <button onclick="patch_user('{{ url_for('patch_user', locid=locid, uid=uid) }}', {{ UserType.SUBSCRIBED }})">
-                    Demote to subscriber
-                </button>
-            </li>
-            {% endif %}
+                {% if user_type == UserType.ADMIN %}
+                <li>
+                    <button onclick="patch_user('{{ url_for('patch_user', locid=locid, uid=uid) }}', {{ UserType.SUBSCRIBED }})">
+                        Demote to subscriber
+                    </button>
+                </li>
+                {% endif %}
 
-        </ul>
+            </ul>
+        {% endif %}
     {% endfor %}
 </ul>
 
@@ -84,6 +99,24 @@ function patch_user(url, user_type) {
     const fd = new FormData();
     fd.append('user_type', user_type);
     fd.append('csrf_token', '{{ csrf_token() }}');
+
+    {# if we're promoting people, we need their names #}
+    if (user_type === {{ UserType.ADMIN }}) {
+        let nickname = '';
+        while (typeof(nickname) !== 'string' || nickname.length === 0) {
+            nickname = prompt("Please give this new admin a name:");
+        }
+        fd.append('nickname', nickname);
+    }
+
+    {# if we're banning people, we need a reason #}
+    else if ([{{ UserType.BANNED_WASNT_SUBSCRIBED }}, {{ UserType.BANNED_WAS_SUBSCRIBED }}].includes(user_type)) {
+        let ban_reason = '';
+        while (typeof(ban_reason) !== 'string' || ban_reason.length === 0) {
+            ban_reason = prompt("Please give a reason for this ban:")
+        }
+        fd.append('ban_reason', ban_reason);
+    }
 
     fetch(url, {
         method: 'PATCH',

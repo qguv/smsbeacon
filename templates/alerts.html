@@ -1,4 +1,4 @@
-{% extends 'es6.html' %}
+{% extends 'base.html' %}
 {% block content %}
 
 <form id="alert_form" action="{{ url_for('new_alert', locid=locid) }}" method="post">
@@ -45,9 +45,9 @@
 
 
 <script>
-function patch_alert(url, status) {
+function patch_alert(url, alert_type) {
     let fd = new FormData();
-    fd.append('status', status);
+    fd.append('alert_type', alert_type);
     fd.append('csrf_token', '{{ csrf_token() }}');
 
     fetch(url, {

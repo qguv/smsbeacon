@@ -47,27 +47,34 @@ class InputRequiredIf():
         if other_field is None:
             raise ValidationError('no field named "{}" in form'.format(self.other_field_name))
 
-        condition = kwargs.pop('condition', lambda x: x)
+        condition = self.kwargs.pop('condition', lambda x: x)
 
         if condition(other_field.data):
             InputRequired(*self.args, **self.kwargs)(form, field)
         else:
             Optional(*self.args, **self.kwargs)(form, field)
 
-choosable_roles = {"Subscriber": UserType.SUBSCRIBED,
-                   "Admin": UserType.ADMIN,
-                   "Not subscribed": UserType.NOT_SUBSCRIBED}
-
 class User(FlaskForm):
     telno = StringField("Phone number:", [DataRequired(), InClassLength(string.digits, 'digits', min=10)])
-    user_type = SelectField("User type:", choices=[ (ut.name, str(int(ut))) for ut in UserType ])
-    nickname = StringField("Nickname?", [InputRequiredIf('user_type', condition=lambda field: field.data == UserType.ADMIN)])
+
+    user_type = SelectField("User type:",
+        choices=[ (ut, ut.name) for ut in UserType ],
+        coerce=lambda data: maybe_call(UserType, maybe_call(int, maybe_call(lambda x: x.strip(), data))))
+
+    nickname = StringField("Nickname:", [InputRequiredIf(
+        'user_type',
+        condition=lambda ut: str(ut) == str(UserType.ADMIN) )])
+
+    ban_reason = StringField("Reason:", [InputRequiredIf(
+        'user_type',
+        condition=lambda ut: str(ut) in [ str(bt) for bt in (UserType.BANNED_WASNT_SUBSCRIBED, UserType.BANNED_WAS_SUBSCRIBED) ])])
 
     def into_db(self):
         return dict(
-            telno=maybe_call(normal_telno, self.telno.data),
-            user_type=maybe_call(UserType, maybe_call(int, self.user_type.data.strip())),
-            nickname=self.nickname.data.strip())
+            telno=maybe_call(normal_telno, self.telno.data) if self.telno.data else None,
+            user_type=self.user_type.data,
+            nickname=maybe_call(lambda x: x.strip(), self.nickname.data) if self.nickname.data else None,
+            ban_reason=maybe_call(lambda x: x.strip(), self.ban_reason.data) if self.ban_reason.data else None)
 
 class Beacon(FlaskForm):
 

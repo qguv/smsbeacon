@@ -6,29 +6,37 @@
     <meta http-equiv="content-type" content="text/html; charset=utf-8">
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='base.css') }}" />
 
-    {% if locid is defined %}
-        <title>{{ beacon_nickname(locid) }} {{ locid }} admin</title>
-    {% elif title_override is defined %}
+    {% if title_override is defined %}
         <title>{{ title_override }}</title>
+    {% elif locid is defined %}
+        <title>{{ beacon_nickname(locid) }} {{ locid }} admin</title>
     {% else %}
         <title>smsbeacon admin</title>
     {% endif %}
 
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
+    <!-- fetch polyfill -->
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/es6-promise/4.1.1/es6-promise.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/fetch/2.0.3/fetch.min.js"></script>
+
 {% endblock head %}
 </head>
 <body>
 
 {% block menu %}
+{% if g.auth is defined %}
 <nav>
     <ul>
         <li>{{ beacon_nickname(locid) }} {{ locid }}</li>
-        {% for page in 'alerts, subscribers, admins, bans, settings, log out'.split(', ') %}
-            <li><a href="{{ url_for(page.replace(' ', ''), locid=locid) }}">{{ page | capitalize }}</a></li>
+        {% for page in 'alerts, subscribers, admins, bans, settings'.split(', ') %}
+            <li><a href="{{ url_for(page, locid=locid) }}">{{ page | capitalize }}</a></li>
         {% endfor %}
+        <li><a href="javascript:void(0)" onclick="change_password(prompt('New password'))">Change password</a></li>
+        <li><a href="{{ url_for('logout', locid=locid) }}">Log out</a></li>
     </ul>
 </nav>
+{% endif %}
 {% endblock menu %}
 
 {% with messages = get_flashed_messages(with_categories=true) %}
@@ -36,11 +44,11 @@
         <ul class=flashes>
         {% for category, message in messages %}
             <li class="{{ category }}">
-            {%- if category == 'new_secret' -%}
+            {% if category == 'new_secret' %}
                 Your Plivo secret has been updated. Please update the URL in Plivo to: <code>{{ message }}</code>
-            {%- else -%}
+            {% else %}
                 {{ message }}
-            {%- endif -%}
+            {% endif %}
             </li>
         {% endfor %}
         </ul>
@@ -49,3 +57,31 @@
 
 {% block content %}
 {% endblock %}
+
+{% if g.auth is defined %}
+    <script>
+    function change_password(password, redirect) {
+        const fd = new FormData();
+        fd.append('csrf_token', '{{ csrf_token() }}');
+
+        while (typeof(password) !== 'string' || password.length === 0) {
+            password = prompt('New password');
+        }
+        fd.append('password', password);
+
+        let request = fetch('{{ url_for('patch_user', locid=locid, uid=g.auth['uid']) }}', {
+            method: 'PATCH',
+            body: fd,
+            credentials: 'include',
+            headers: new Headers()
+        });
+
+        if (arguments.length >= 2) {
+            request.then(_ => window.location.href = redirect);
+        } else {
+            request.then(_ => location.reload());
+        }
+    }
+    </script>
+{% endif %}
+<body>
