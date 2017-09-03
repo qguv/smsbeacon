@@ -697,8 +697,10 @@ def post_user(locid):
     locid = locid.lower()
     form = forms.User()
 
-    # TODO: redirect somewhere better
-    back = redirect(url_for('subscribers', locid=locid))
+    if request.form.get('return_to', '').strip():
+        back = redirect(request.form['return_to'].strip())
+    else:
+        back = redirect(url_for('alerts', locid=locid))
 
     # if it's a POST request and the form validates correctly
     if form.validate_on_submit():
