@@ -1,3 +1,5 @@
 Flask==0.12.2
 Flask-WTF==0.14.2
 Passlib==1.7.1
+PyMySQL==0.7.11
+plivo==0.11.3

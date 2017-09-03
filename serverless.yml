@@ -1,4 +1,4 @@
-service: smsbeacon_dev
+service: smsbeacon
 
 provider:
   name: aws
@@ -6,7 +6,6 @@ provider:
 
 plugins:
   - serverless-wsgi
-  - serverless-python-requirements
 
 functions:
   app:

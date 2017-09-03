@@ -1,3 +1,6 @@
+# allow importing dependencies
+import os, sys; sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "./vendored"))
+
 from flask_wtf import FlaskForm
 from wtforms import BooleanField, StringField, TextAreaField, IntegerField, HiddenField, PasswordField, SelectField
 from wtforms.validators import DataRequired, InputRequired, Optional, Length, ValidationError, NumberRange

@@ -1,3 +1,6 @@
+# allow importing dependencies
+import os, sys; sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "./vendored"))
+
 from pymysql import connect
 
 from config import database

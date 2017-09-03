@@ -32,12 +32,12 @@ I ([qguv](https://github.com/qguv)) run a beacon server for community use. If yo
   - make a password-protected user with permission to access and modify the `smsbeacon` database
 - configure AWS for serverless:
   - `sudo npm install -g serverless`
-  - `npm install --save serverless-wsgi serverless-python-requirements`
   - follow [this doc](https://serverless.com/framework/docs/providers/aws/guide/credentials)
 - deploy the code:
   - clone this repository on your dev machine
+  - `pip3 install -t vendored -r requirements.txt'
   - modify `config.py` to reflect your database information
-  - change the `change me` fields in `config.py` to long, random strings ([random.org][] is okay)
+  - change the `change me` fields in `config.py` to long random strings ([random.org][] is okay)
   - `serverless deploy -v`
 - configure your beacon on the site:
   - run `./init_db.py`, note the URL it gives you
