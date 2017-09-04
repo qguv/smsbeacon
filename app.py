@@ -564,7 +564,7 @@ def new_beacon():
         try:
             get_db().insert_into('beacons', **m)
             flash("Beacon created", 'info')
-            flash(request.url_root.rstrip('/') + url_for('sms', locid=m['locid'], secret=m['secret']), 'new_secret')
+            flash(request.url_root.rstrip('/') + url_for('incoming_sms', locid=m['locid'], secret=m['secret']), 'new_secret')
             return redirect(url_for('settings', locid=m['locid']))
         except:
             flash("Couldn't create beacon")
@@ -609,7 +609,7 @@ def settings(locid):
             get_db().update('beacons', updates=m, wheres={'telno': m['telno']})
             flash('Beacon updated', 'info')
             if form.new_secret.data:
-                flash(request.url_root.rstrip('/') + url_for('sms', locid=m['locid'], secret=m['secret']), 'new_secret')
+                flash(request.url_root.rstrip('/') + url_for('incoming_sms', locid=m['locid'], secret=m['secret']), 'new_secret')
             return redirect(url_for('settings', locid=m['locid']))
 
         except Exception as e:
