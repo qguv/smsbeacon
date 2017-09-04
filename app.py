@@ -1,23 +1,29 @@
 #!/usr/bin/env python3
+'''Flask webapp for smsbeacon'''
 
-# allow importing dependencies
-import os, sys; sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "./vendored"))
+# internal
 
 import config
 import forms
 from db import Database, UserType, AlertType, ROOT_UID
-from utils import random_token, all_of_them, normal_telno
+import utils
+import responses
+
+# stdlib
 
 from datetime import datetime
 from functools import wraps
 from collections import Counter
+
+# external
+
+import os, sys; sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "./vendored"))
+
 import pymysql
+import requests
 
 from passlib.context import CryptContext
 crypto = CryptContext(schemes=['pbkdf2_sha256'])
-
-#import plivo
-#p = plivo.RestAPI(config.plivo_id, config.plivo_token)
 
 from flask import Flask, request, render_template, g, url_for, redirect, \
     make_response, get_flashed_messages, flash
@@ -49,114 +55,22 @@ def close_db(error):
     if hasattr(g, 'db'):
         g.db.close()
 
-def user_locid(uid) -> 'locid' or Exception:
-    if uid == ROOT_UID:
-        return 'root'
+def replace_token(uid, expires=True) -> 'token':
+    token = utils.random_token()
 
-    sql = '''select b.locid
-             from users u inner join beacons b
-             where u.id = %s'''
-
-    return get_db().fetchone(sql, uid)[0].lower()
-
-def user_uid(locid, telno) -> 'uid' or Exception:
-    locid = locid.lower()
-    if 'root' in (locid, telno):
-        return ROOT_UID
-
-    sql = '''select u.id
-             from users u inner join beacons b
-             on u.beacon = b.telno
-             where b.locid=%s and u.telno=%s'''
-
-    return get_db().fetchone(sql, locid, telno)[0]
-
-def user_telno(uid) -> 'telno' or Exception:
-    if uid == ROOT_UID:
-        return 'root'
-
-    sql = '''select telno
-             from users u
-             where id = %s'''
-
-    return get_db().fetchone(sql, uid)[0]
-
-def user_type(uid) -> UserType or Exception:
-    if uid == ROOT_UID:
-        return UserType.ADMIN
-
-    sql = '''select user_type
-             from users u
-             where id = %s'''
-
-    return UserType(get_db().fetchone(sql, uid)[0])
-
-def users_of_type(locid, *user_types) -> {"telno": ('id', 'nickname', 'user_type')} or None:
-    sql = '''select u.telno, u.id, u.user_type, u.nickname, u.ban_reason
-             from users u inner join beacons b
-             on u.beacon = b.telno
-             where b.locid = %s
-             and u.user_type in ({})
-    '''.format(','.join(str(ut) for ut in user_types))
-
-    return { t[0]: t[1:] for t in get_db().fetchall(sql, locid) }
-
-def delete_user(uid):
-    try:
-        sql = '''delete from users where uid = %s'''
-        return bool(get_db().execute(sql, uid))
-    except:
-        return False
-
-def beacon_nickname(locid) -> str:
-    sql = '''select nickname
-             from beacons
-             where locid = %s'''
-
-    try:
-        return get_db().fetchone(sql, locid)[0]
-    except:
-        return ''
-
-def beacon_telno(locid) -> str:
-    sql = '''select telno
-             from beacons
-             where locid = %s'''
-
-    return get_db().fetchone(sql, locid)[0]
-
-def beacon_autosend_delay(locid) -> int:
-    sql = 'select autosend_delay from beacons where locid = %s'
-    return get_db().fetchone(sql, locid)[0]
-
-def beacon_prune_delay(locid) -> int:
-    sql = 'select prune_delay from beacons where locid = %s'
-    return get_db().fetchone(sql, locid)[0]
-
-def alert_details(aid) -> ('text', 'sender'):
-    sql = 'select text, telno from alerts where id = %s'
-    return get_db().fetchone(sql, aid)
-
-def user_token_lifetime(uid):
-    sql = '''select b.token_lifetime
-             from beacons b inner join users u
-             on b.telno = u.beacon
-             where u.id=%s'''
-
-    return get_db().fetchone(sql, uid)[0]
-
-def replace_token(uid) -> 'token':
-    if uid == ROOT_UID:
-        token_lifetime = config.root_token_lifetime
-    else:
-        token_lifetime = user_token_lifetime(uid)
-
-    token = random_token()
-
-    updates = dict(
-            thash = crypto.hash(token),
-            token_expires = int(datetime.now().timestamp()) + token_lifetime)
     wheres = dict(id = uid)
+    updates = dict(thash=crypto.hash(token))
+
+    if expires:
+        if uid == ROOT_UID:
+            token_lifetime = config.root_token_lifetime
+        else:
+            token_lifetime = get_db().user_token_lifetime(uid)
+
+        updates['token_expires'] = int(datetime.now().timestamp()) + token_lifetime
+
+    else:
+        updates['token_expires'] = None
 
     get_db().update('users', updates, wheres)
     return token
@@ -174,19 +88,15 @@ def token_auth(uid, token) -> None or Exception or BadToken or TokenExpired:
     '''TokenExpired implies the token would've otherwise been good. BadToken
     means the token failed the check, regardless of expiry.'''
 
-    sql = '''select thash, token_expires
-             from users
-             where id=%s'''
-
     try:
-        thash, token_expires = get_db().fetchone(sql, uid)
+        thash, token_expires = get_db().get_token(uid)
     except:
         raise Exception("couldn't get user")
 
     if not crypto.verify(token, thash):
         raise BadToken("token doesn't match")
 
-    if token_expires < int(datetime.now().timestamp()):
+    if token_expires is not None and token_expires < int(datetime.now().timestamp()):
         raise TokenExpired("token expired")
 
 def root_password_auth(password) -> None or Exception:
@@ -216,15 +126,6 @@ def password_auth(locid, telno, password) -> None or Exception:
     if not crypto.verify(password, phash):
         raise Exception("password doesn't match")
 
-def password_set(uid) -> bool:
-    sql = '''select id
-             from users
-             where id=%s and phash is not null'''
-    try:
-        return bool(get_db().execute(sql, uid))
-    except:
-        return False
-
 def change_password(uid, password) -> None or Exception:
     sql = '''update users
              set phash=%s
@@ -235,7 +136,7 @@ def change_password(uid, password) -> None or Exception:
     if not get_db().update('users', updates, wheres):
         raise Exception("no such user")
 
-def cookie_auth(allow_uids=all_of_them, allow_user_types=[UserType.ADMIN]) -> 'decorator':
+def cookie_auth(allow_uids=utils.all_of_them, allow_user_types=[UserType.ADMIN]) -> 'decorator':
     '''Attempts to authenticate a user based on 'u' and 't' cookies we
     previously set. On success, the authenticated user's information is stored
     as a dict in g.auth with the following structure:
@@ -285,13 +186,13 @@ def cookie_auth(allow_uids=all_of_them, allow_user_types=[UserType.ADMIN]) -> 'd
                 print("user not allowed")
                 return beacon_login
 
-            if uid != ROOT_UID and user_locid(uid) != locid:
+            if uid != ROOT_UID and get_db().user_locid(uid) != locid:
                 print("logged-in user doesn't belong to this beacon")
                 return beacon_login
 
             try:
                 #TODO combine user db calls
-                ut = user_type(uid)
+                ut = get_db().user_type(uid)
                 if ut not in allow_user_types:
                     print("user type not allowed")
                     return beacon_login
@@ -306,6 +207,72 @@ def cookie_auth(allow_uids=all_of_them, allow_user_types=[UserType.ADMIN]) -> 'd
         return wrapped
     return wrapper
 
+def send_sms(text, to, locid):
+    plivo_id, plivo_token = get_db().get_api_keys(locid)
+    url = "https://api.plivo.com/v1/Account/{}/Message/".format(plivo_id)
+
+    if isinstance(to, str):
+        to = [to]
+    to = '<'.join(utils.normal_telno(t) for t in to)
+
+    print("[DEBUG] Beacon at {} sending SMS to {} via API call: \"{}\"".format(locid, to if to else "nobody", text))
+
+    # plivo shits the bed if we send responses with no destination numbers
+    if not to:
+        return
+
+    requests.post(url, auth=(plivo_id, plivo_token), json=dict(
+        # TODO: combine DB calls
+        src=get_db().beacon_telno(locid),
+        dst=to,
+        text=text,
+
+        # TODO: pass URL parameter to catch status of the text to detect unsubscribed users
+        # url=callback,
+
+        # only log in debug mode
+        log=app.debug)).raise_for_status()
+
+def blast(text, locid, user_types, exclude=[]):
+    if isinstance(exclude, str):
+        exclude = [exclude]
+
+    # TODO: combine DB calls
+    to = get_db().users_of_type(locid, *user_types).keys()
+    if exclude:
+        to = [ t for t in to if t not in exclude ]
+    return send_sms(text, to, locid)
+
+def inform_admins_new(text, aid, locid, exclude=[]):
+    '''exclude is a list of telno'''
+
+    m = "New submission: \"{}\"\nApprove or reject at {}"
+    for telno, (uid, _, _, _) in get_db().users_of_type(locid, UserType.ADMIN).items():
+
+        if telno in exclude:
+            continue
+
+        # TODO: on autologin, go directly to relevant alert id and highlight
+        autologin_url = request.url_root.rstrip('/') + url_for('autologin', locid=locid, uid=uid, token=replace_token(uid))
+        send_sms(m.format(text, autologin_url), telno, locid)
+
+    print("[DEBUG] Admins informed")
+
+def inform_admins_responded(how: AlertType, text, aid, by_whom: 'nickname', locid, exclude=[]):
+    '''exclude is a list of telno'''
+
+    # TODO: on autologin, go directly to relevant alert id and highlight
+    m = "Message {} by {}: \"{}\""
+
+    if how == AlertType.REPORT_RELAYED:
+        verb = 'sent'
+    elif how == AlertType.REPORT_REJECTED:
+        verb = 'rejected'
+    else:
+        verb = 'modified'
+
+    blast(m.format(verb, by_whom, text), locid, [UserType.ADMIN], exclude=exclude)
+
 # APP SETUP
 
 @app.context_processor
@@ -313,7 +280,7 @@ def beacon_name():
     return dict(
         AlertType=AlertType,
         UserType=UserType,
-        beacon_nickname=beacon_nickname,
+        beacon_nickname=get_db().beacon_nickname,
         ROOT_UID=ROOT_UID)
 
 # ROUTES
@@ -337,18 +304,21 @@ def logout(locid):
 @app.route('/<locid>/login/<int:uid>/<token>')
 @app.route('/root/login/<token>', defaults={'locid': 'root', 'uid': ROOT_UID})
 def autologin(locid, uid, token):
+    # TODO: on autologin, go directly to relevant alert id and highlight
     locid = locid.lower()
     try:
         token_auth(uid, token)
         print("successfully authenticated through URL") # DEBUG
 
-        if not password_set(uid):
+        if not get_db().password_set(uid):
             response = redirect(url_for('first_login', locid=locid))
         else:
             response = redirect(url_for('root') if uid == ROOT_UID else url_for('alerts', locid=locid))
 
         response.set_cookie('u', str(uid))
         response.set_cookie('t', replace_token(uid))
+
+        # TODO: perhaps we shouldn't replace the token, just set it to expire if it's an indefinite token
 
         return response
 
@@ -394,9 +364,9 @@ def login(locid):
         else:
             telno = request.form['telno'].strip()
             if telno != 'root':
-                telno = normal_telno(telno)
+                telno = utils.normal_telno(telno)
             password_auth(locid, telno, password)
-            uid = user_uid(locid, telno)
+            uid = get_db().user_uid(locid, telno)
             response = redirect(url_for('alerts', locid=locid))
 
         response.set_cookie('u', str(uid))
@@ -441,38 +411,50 @@ def alerts(locid):
         import traceback; traceback.print_exc() #DEBUG
         return 'No alerts!'
 
-def send_sms(to, text, sender):
-    print("[DEBUG] The following message from {} would have sent to {}:\n{}".format(sender, to, text))
-    return #TODO
-
-def blast(text, locid, sender):
-    print("[DEBUG] The following message from {} would have blasted to the {} beacon:\n{}".format(sender, locid, text))
-    return #TODO
-
 @app.route('/<locid>/alerts/new', methods=['POST'])
 @cookie_auth()
 def new_alert(locid):
     locid = locid.lower()
 
     text = request.form['text'].strip()
-    sender = user_telno(g.auth['uid'])
+    sender = get_db().user_telno(g.auth['uid'])
 
     # send immediately if the beacon is so configured
-    autosend_delay = beacon_autosend_delay(locid)
+    autosend_delay = get_db().beacon_autosend_delay(locid)
     if autosend_delay == 0:
-        blast(text, locid, sender)
-        flash("Message sent!")
+        now = int(datetime.now().timestamp())
+        get_db().insert_into('alerts',
+                # TODO: combine DB queries
+                beacon=get_db().beacon_telno(locid),
+                telno=sender,
+                text=text,
+                reported_by=sender,
+                reported_at=now,
+                acted_by=sender,
+                acted_at=now,
+                alert_type=AlertType.REPORT_RELAYED)
+
+        blast(text, locid, [UserType.SUBSCRIBED])
+
+        nickname, = get_db().fetchone('select nickname from admins where telno = %s', sender)
+        if nickname is None:
+            nickname = "at {}".format(sender)
+
+        blast("Admin {} just sent alert out: \"{}\"".format(nickname, text), locid, [UserType.ADMIN], exclude=sender)
+        flash("Message sent out, thanks.")
 
     # otherwise put it in the queue
     else:
         now = int(datetime.now().timestamp())
-        last_id = get_db().insert_into('alerts',
-                beacon=beacon_telno(locid),
+        aid = get_db().insert_into('alerts',
+                beacon=get_db().beacon_telno(locid),
                 telno=sender,
                 text=text,
-                reported=now,
+                reported_by=sender,
+                reported_at=now,
                 alert_type=AlertType.REPORT_PENDING)
-        flash("Message queued!")
+        inform_admins_new(text, aid, locid, exclude=[sender])
+        flash("Message queued and other admins notified.")
 
     return redirect(url_for('alerts', locid=locid))
 
@@ -482,26 +464,25 @@ def patch_alert(locid, alert):
     locid = locid.lower()
     new_alert_type = AlertType(int(request.form['alert_type'].strip()))
 
-    text, sender = alert_details(alert)
+    text, sender = get_db().alert_details(alert)
+
+    admin_telno, nickname = get_db().fetchone('select telno, nickname from users where id = %s', g.auth['uid'])
+    if nickname is None:
+        nickname = admin_telno
+
+    get_db().change_alert_type(alert, new_alert_type, g.auth['uid'])
 
     if new_alert_type == AlertType.REPORT_RELAYED:
-        blast(text, locid, sender)
+        blast(text, locid, [UserType.SUBSCRIBED], exclude=sender)
+        send_sms("Your report was sent out, thanks for submitting.", sender, locid)
         flash("Report sent out.")
 
     elif new_alert_type == AlertType.REPORT_REJECTED:
         flash("Report rejected.")
 
-    change_alert_type(alert, new_alert_type, g.auth['uid'])
+    inform_admins_responded(new_alert_type, text, alert, nickname, locid, exclude=[admin_telno])
+
     return 'OK'
-
-def change_alert_type(aid, action, uid):
-    now = int(datetime.now().timestamp())
-    get_db().update('alerts', {'alert_type': action, 'acted': now}, {'id': aid})
-
-    if action == AlertType.REPORT_RELAYED:
-        get_db().execute('update users set relayed = relayed + 1 where id = %s', uid)
-    elif action == AlertType.REPORT_RELAYED:
-        get_db().execute('update users set rejected = rejected + 1 where id = %s', uid)
 
 @app.route('/p/<secret>')
 def process(secret):
@@ -520,15 +501,17 @@ def process(secret):
              where b.autosend_delay is not null
              and b.autosend_delay > 0
              and a.alert_type = {}
-             and a.reported + b.autosend_delay < {}
+             and a.reported_at + b.autosend_delay < {}
     '''.format(AlertType.REPORT_PENDING, now)
 
     stale = get_db().fetchall(sql)
     queue_msg = "[DEBUG] {} reports timed out and were sent".format(len(stale))
 
     for locid, text, sender, alert in stale:
-        get_db().update('alerts', {'alert_type': AlertType.REPORT_RELAYED, 'acted': now}, {'id': alert})
-        blast(text, locid, sender)
+        get_db().update('alerts', {'alert_type': AlertType.REPORT_RELAYED, 'acted_at': now}, {'id': alert})
+        blast(text, locid, [UserType.SUBSCRIBED], exclude=sender)
+        inform_admins_sent(text, alert, "timing out", locid)
+        send_sms("Your report was sent out, thanks for submitting.", sender, locid)
 
     now = int(datetime.now().timestamp())
     prunable = [AlertType.REPORT_RELAYED, AlertType.REPORT_REJECTED, AlertType.WALLOPS_RELAYED]
@@ -538,16 +521,87 @@ def process(secret):
              from beacons b inner join alerts a
              on b.telno = a.beacon
              where b.prune_delay is not null
+             and a.acted_at is not null
              and b.prune_delay > 0
-             and a.acted is not null
              and a.alert_type in ({})
-             and a.acted + b.prune_delay < {}
+             and a.acted_at + b.prune_delay < {}
     '''.format(','.join(str(at) for at in prunable), now)
 
     pruned = get_db().execute(sql)
     prune_msg = "[DEBUG] {} old reports were pruned".format(pruned)
 
     return "<p>" + "<br />".join([queue_msg, prune_msg]) + "</p>"
+
+@app.route('/<locid>/sms/<secret>', methods=['GET', 'POST'])
+@csrfp.exempt
+def incoming_sms(locid, secret):
+    print("[DEBUG] sms sent to", locid)
+    try:
+        actual_secret, = get_db().fetchone('select secret from beacons where locid = %s', locid)
+    except Exception as e:
+        print("[DEBUG] couldn't get this beacon's secret:", e)
+        return bad_request()
+
+    if secret != actual_secret:
+        print("[DEBUG] secret was wrong")
+        return bad_request()
+
+    try:
+        sender = utils.normal_telno(request.values['From'].strip())
+        beacon = utils.normal_telno(request.values['To'].strip())
+        text = request.values['Text'].strip()
+    except TypeError:
+        print("[DEBUG] incoming sms was malformed")
+        return bad_request()
+
+    try:
+        user_type = get_db().user_type_by_telno(sender)
+    except:
+        user_type = UserType.NOT_SUBSCRIBED
+
+    print("[DEBUG] from {} ({}):".format(sender, user_type.name.lower().replace('_', ' ')))
+    print('[DEBUG]   "{}"'.format(text))
+
+    if user_type in (UserType.BANNED_WASNT_SUBSCRIBED, UserType.BANNED_WAS_SUBSCRIBED):
+        return 'OK'
+
+    if 'subscribe' in text.lower().split():
+        if user_type == UserType.NOT_SUBSCRIBED:
+            get_db().subscribe(sender, beacon)
+            return responses.now_subscribed(sender, beacon)
+        else:
+            return responses.already_subscribed(sender, beacon)
+
+    elif user_type == UserType.ADMIN:
+        now = int(datetime.now().timestamp())
+        get_db().insert_into('alerts',
+                beacon=beacon,
+                telno=sender,
+                text=text,
+                reported_at=now,
+                reported_by=sender,
+                acted_at=now,
+                acted_by=sender,
+                alert_type=AlertType.REPORT_RELAYED)
+        blast(text, locid, [UserType.SUBSCRIBED])
+
+        nickname, = get_db().fetchone('select nickname from admins where telno = %s', sender)
+        if nickname is None:
+            nickname = "at {}".format(sender)
+
+        blast("Admin {} just sent alert out: \"{}\"".format(nickname, text), locid, [UserType.ADMIN], exclude=sender)
+        return responses.blasted_thanks(sender, beacon)
+
+    else:
+        now = int(datetime.now().timestamp())
+        aid = get_db().insert_into('alerts',
+                beacon=beacon,
+                telno=sender,
+                text=text,
+                reported_at=now,
+                reported_by=sender,
+                alert_type=AlertType.REPORT_PENDING)
+        return responses.submitted_thanks(sender, beacon)
 
 @app.route('/beacons/new', methods=['GET', 'POST'])
 @cookie_auth(allow_uids=[ROOT_UID])
@@ -628,10 +682,6 @@ def settings(locid):
             form=form,
             post_to=url_for('settings', locid=locid))
 
-@app.route('/<locid>/sms/<secret>')
-def incoming_sms(locid, secret):
-    return render_template('todo.html', locid=locid) # TODO
-
 @app.route('/<locid>/subscribers', endpoint='subscribers', defaults={'kind': 'Subscribers', 'user_types': [UserType.SUBSCRIBED]})
 @app.route('/<locid>/admins', endpoint='admins', defaults={'kind': 'Admins', 'user_types': [UserType.ADMIN]})
 @app.route('/<locid>/bans', endpoint='bans', defaults={'kind': 'Bans', 'user_types': [UserType.BANNED_WASNT_SUBSCRIBED, UserType.BANNED_WAS_SUBSCRIBED]})
@@ -639,7 +689,7 @@ def incoming_sms(locid, secret):
 def users(locid, kind, user_types):
     '''The first user in the user_types array is used as the type of new users
     created from this page.'''
-    users = users_of_type(locid, *user_types)
+    users = get_db().users_of_type(locid, *user_types)
     return render_template('users.html', users=users, kind=kind, locid=locid, user_types=user_types)
 
 @app.route('/<locid>/users/<int:uid>', methods=['PATCH'])
@@ -666,6 +716,7 @@ def patch_user(locid, uid):
         # TODO: gracefully enforce that all admins must have nicknames
         if new_user_type == UserType.ADMIN:
             updates['nickname'] = request.form['nickname'].strip()
+            updates['phash'] = None
 
         # clear out the nickname for all normal users
         elif new_user_type in (UserType.SUBSCRIBED, UserType.NOT_SUBSCRIBED):
@@ -686,9 +737,12 @@ def patch_user(locid, uid):
 
     try:
         if new_user_type == UserType.ADMIN:
-            token = replace_token(uid)
+            token = replace_token(uid, expires=False)
             url = url_for('autologin', uid=uid, locid=locid, token=token)
-            send_sms(user_telno(uid), "You're now an admin on the {} beacon. Click to log in: {}".format(locid, request.url_root.rstrip('/') + url), beacon_telno(locid))
+            send_sms("You're now an admin on the {} beacon. Click to log in: {}".format(locid, request.url_root.rstrip('/') + url),
+                     get_db().user_telno(uid),
+                     locid)
+        flash("Sent a text with a login link to the new admin")
     except:
         flash("Couldn't text the new admin their credentials")
 
@@ -710,16 +764,16 @@ def post_user(locid):
 
         # if the user already exists in this beacon, delete and start over
         try:
-            uid = user_uid(locid, form.telno.data)
+            uid = get_db().user_uid(locid, form.telno.data)
             try:
-                delete_user(uid)
+                get_db().delete_user(uid)
             except:
                 flash("There's already a user with that phone number, and I can't delete them!")
                 return back
         except:
             pass
 
-        beacon = beacon_telno(locid)
+        beacon = get_db().beacon_telno(locid)
         now=int(datetime.now().timestamp())
 
         model = form.into_db()
@@ -737,7 +791,9 @@ def post_user(locid):
             try:
                 token = replace_token(uid)
                 url = url_for('autologin', uid=uid, locid=locid, token=token)
-                send_sms(model['telno'], "You're now an admin on the {} beacon. Click to log in: {}".format(locid, request.url_root.rstrip('/') + url), beacon)
+                send_sms("You're now an admin on the {} beacon. Click to log in: {}".format(locid, request.url_root.rstrip('/') + url),
+                         model['telno'], # normalized already by form
+                         locid)
                 flash("Sent a text with a login link to the new admin")
             except:
                 flash("Couldn't text the new admin their credentials")

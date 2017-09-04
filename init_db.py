@@ -14,8 +14,6 @@ crypto = CryptContext(schemes=['pbkdf2_sha256'])
 
 from subprocess import check_call
 
-# TODO actually create database
-
 print("Populating database...", end=' ')
 with open('schema.sql', 'r') as f:
     check_call(['mysql',
@@ -30,14 +28,7 @@ db = Database()
 
 print("Done!\nInitializing beacon root user...", end=' ')
 root_token = random_token()
-now = int(datetime.now().timestamp())
-db.insert_into('users',
-    telno='root',
-    beacon='root',
-    user_type=UserType.ADMIN,
-    thash=crypto.hash(root_token),
-    token_expires= now + config.root_token_lifetime,
-    created=now)
+db.init_root_user(crypto.hash(root_token))
 
 url = config.public_url
 if config.port != 80:

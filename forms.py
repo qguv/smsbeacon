@@ -1,11 +1,17 @@
-# allow importing dependencies
+'''WTForm support for smsbeacon'''
+
+# internal
+
+from db import UserType
+
+# external
+
 import os, sys; sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "./vendored"))
 
 from flask_wtf import FlaskForm
 from wtforms import BooleanField, StringField, TextAreaField, IntegerField, HiddenField, PasswordField, SelectField
 from wtforms.validators import DataRequired, InputRequired, Optional, Length, ValidationError, NumberRange
 from werkzeug.datastructures import MultiDict
-from db import UserType
 
 # fix dumb checkbox bug: https://stackoverflow.com/a/38102472
 BooleanField.false_values = {False, 'false', ''}

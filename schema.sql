@@ -1,3 +1,5 @@
+/* database schema for smsbeacon */
+
 drop table if exists `beacons`;
 create table `beacons` (
   `telno` varchar(16) primary key,
@@ -42,9 +44,12 @@ create table `alerts` (
   `telno` varchar(16) not null,
 
   `text` text not null,
-  `reported` bigint unsigned not null,
-  `acted` bigint unsigned null,
-  /* TODO: acted on by whom? */
+
+  `reported_at` bigint unsigned not null,
+  `reported_by` varchar(16) not null,
+
+  `acted_at` bigint unsigned null,
+  `acted_by` varchar(16) null,
 
   /* type:
    *   0  -> report_pending
@@ -83,8 +88,9 @@ create table `users` (
 
   /* for an admin: how many reports has this admin rejected/relayed
    * for anyone else: how many of their reports have been rejected/relayed */
-  `rejected` int not null default 0,
-  `relayed` int not null default 0,
+  `num_rejected` int not null default 0,
+  `num_relayed` int not null default 0,
+
   /* TODO: recently active? */
 
   /* password hash and salt */
