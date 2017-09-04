@@ -12,7 +12,7 @@ from flask import Response
 def xmlgen(text, to, beacon_telno):
     if isinstance(to, str):
         to = [to]
-    to = '<'.join(utils.normal_telno(t) for t in to)
+    to = '<'.join(utils.normal_telno(t) for t in to if t != 'root')
 
     print("[DEBUG] Beacon at {} sending SMS to {} via XML response: \"{}\"".format(beacon_telno, to if to else "nobody", text))
 

@@ -213,7 +213,7 @@ def send_sms(text, to, locid):
 
     if isinstance(to, str):
         to = [to]
-    to = '<'.join(utils.normal_telno(t) for t in to)
+    to = '<'.join(utils.normal_telno(t) for t in to if t != 'root')
 
     print("[DEBUG] Beacon at {} sending SMS to {} via API call: \"{}\"".format(locid, to if to else "nobody", text))
 
@@ -244,7 +244,10 @@ def blast(text, locid, user_types, exclude=[]):
     return send_sms(text, to, locid)
 
 def inform_admins_new(text, aid, locid, exclude=[]):
-    '''exclude is a list of telno'''
+    '''exclude is a telno or a list of telno'''
+
+    if isinstance(exclude, str):
+        exclude = [exclude]
 
     m = "New submission: \"{}\"\nApprove or reject at {}"
     for telno, (uid, _, _, _) in get_db().users_of_type(locid, UserType.ADMIN).items():
@@ -259,7 +262,10 @@ def inform_admins_new(text, aid, locid, exclude=[]):
     print("[DEBUG] Admins informed")
 
 def inform_admins_responded(how: AlertType, text, aid, by_whom: 'nickname', locid, exclude=[]):
-    '''exclude is a list of telno'''
+    '''exclude is telno or a list of telno'''
+
+    if isinstance(exclude, str):
+        exclude = [exclude]
 
     # TODO: on autologin, go directly to relevant alert id and highlight
     m = "Message {} by {}: \"{}\""
@@ -413,6 +419,7 @@ def alerts(locid):
 
 @app.route('/<locid>/alerts/new', methods=['POST'])
 @cookie_auth()
+# TODO: should be called post_alert
 def new_alert(locid):
     locid = locid.lower()
 
@@ -453,7 +460,7 @@ def new_alert(locid):
                 reported_by=sender,
                 reported_at=now,
                 alert_type=AlertType.REPORT_PENDING)
-        inform_admins_new(text, aid, locid, exclude=[sender])
+        inform_admins_new(text, aid, locid, exclude=sender)
         flash("Message queued and other admins notified.")
 
     return redirect(url_for('alerts', locid=locid))
@@ -480,7 +487,7 @@ def patch_alert(locid, alert):
     elif new_alert_type == AlertType.REPORT_REJECTED:
         flash("Report rejected.")
 
-    inform_admins_responded(new_alert_type, text, alert, nickname, locid, exclude=[admin_telno])
+    inform_admins_responded(new_alert_type, text, alert, nickname, locid, exclude=admin_telno)
 
     return 'OK'
 
