@@ -106,6 +106,8 @@ def root_password_auth(password) -> None or Exception:
              from users u
              where id=%s'''
 
+    # TODO: root can log into nonexistent beacons; no actions do anything, but web UI still allows it
+
     phash, = get_db().fetchone(sql, ROOT_UID)
 
     if not crypto.verify(password, phash):
