@@ -1,8 +1,11 @@
-- trigger lambda via custom url
-  - set up ssl cert with aws certificate mgr
-  - set custom url in aws api gateway settings
-- actually send out texts
-- actually respond to texts
+bugs:
+
+- admins don't get notified when other admins directly blast
+- "Sent by {} admin" is misleading because it was just approved, not sent
+- admin banning self by number stays logged in and can even unban self
+
+new features:
+
 - get `process(...)` called: https://stackoverflow.com/questions/41557956/can-you-trigger-an-aws-lambda-on-a-dynamic-timer
 - soft migration test, old to new
 - make web ui halfway decent
