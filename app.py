@@ -320,14 +320,13 @@ def autologin(locid, uid, token):
 
         if not get_db().password_set(uid):
             response = redirect(url_for('first_login', locid=locid))
+            response.set_cookie('t', token)
         else:
             response = redirect(url_for('root') if uid == ROOT_UID else url_for('alerts', locid=locid))
+            # TODO: perhaps we shouldn't replace the token, just set it to expire if it's an indefinite token
+            response.set_cookie('t', replace_token(uid))
 
         response.set_cookie('u', str(uid))
-        response.set_cookie('t', replace_token(uid))
-
-        # TODO: perhaps we shouldn't replace the token, just set it to expire if it's an indefinite token
-
         return response
 
     except Exception as e:
@@ -751,8 +750,9 @@ def patch_user(locid, uid):
             send_sms("You're now an admin on the {} beacon. Click to log in: {}".format(locid, request.url_root.rstrip('/') + url),
                      get_db().user_telno(uid),
                      locid)
-        flash("Sent a text with a login link to the new admin")
-    except:
+            flash("Sent a text with a login link to the new admin")
+    except Exception as e:
+        print("[ERROR] Couldn't text the new admin their credentials:", e)
         flash("Couldn't text the new admin their credentials")
 
     return 'OK'
@@ -804,7 +804,8 @@ def post_user(locid):
                          model['telno'], # normalized already by form
                          locid)
                 flash("Sent a text with a login link to the new admin")
-            except:
+            except Exception as e:
+                print("[ERROR] Couldn't text the new admin their credentials:", e)
                 flash("Couldn't text the new admin their credentials")
                 return back
 
