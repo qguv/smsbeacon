@@ -17,3 +17,10 @@ functions:
 custom:
   wsgi:
     app: app.app
+
+package:
+  exclude:
+    - '.git/**'
+    - '__pycache__/**'
+    - '*.txt'
+    - '*.md'

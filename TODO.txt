@@ -1,11 +1,14 @@
 bugs:
 
+- admin reporting over SMS causes undelivered(?) messages (500 on callback?)
 - **untested fix in:** admins don't get texted when other admins directly blast
 - callbacks have 400 errors and don't send error codes but appear to work anyway??!
 
 tasks before deploy:
 
+- don't show plivo api keys on the page; pull them into the update only if they're nonblank
 - get `process(...)` called: https://stackoverflow.com/questions/41557956/can-you-trigger-an-aws-lambda-on-a-dynamic-timer
+- automatically update plivo application url?
 - serve static files statically
   - favicon
   - landing
@@ -18,6 +21,7 @@ tasks before deploy:
 task after deploy:
 
 - set sls up to provision api gateway, rds, and maaaaybe custom url
+  - qa environment and prod environment
 - extensive api documentation
 - more queueing options
 - make web ui halfway decent
