@@ -1,13 +1,23 @@
 bugs:
 
-- admins don't get notified when other admins directly blast
-- "Sent by {} admin" is misleading because it was just approved, not sent
-- admin banning self by number stays logged in and can even unban self
+- **untested fix in:** admins don't get texted when other admins directly blast
+- callbacks have 400 errors and don't send error codes but appear to work anyway??!
 
-new features:
+tasks before deploy:
 
 - get `process(...)` called: https://stackoverflow.com/questions/41557956/can-you-trigger-an-aws-lambda-on-a-dynamic-timer
+- serve static files statically
+  - favicon
+  - landing
+  - and then do all of this through sls
+- use RDS database
+- user testing at hackrva
 - soft migration test, old to new
-- make web ui halfway decent
-- more queueing options
+- DEPLOY AND REPLACE v1
+
+task after deploy:
+
+- set sls up to provision api gateway, rds, and maaaaybe custom url
 - extensive api documentation
+- more queueing options
+- make web ui halfway decent

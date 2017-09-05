@@ -70,7 +70,7 @@ create table `users` (
   `telno` varchar(16) not null,
 
   /* never on users with user_type not_subscribed or subscribed */
-  `nickname` varchar(16) null,
+  `nickname` varchar(64) null,
 
   /* user_type:
    * 0  -> not_subscribed
@@ -101,4 +101,17 @@ create table `users` (
   `token_expires` bigint unsigned null,
 
   `created` bigint unsigned not null
+);
+
+drop table if exists `sms`;
+create table `sms` (
+  `id` serial primary key,
+  `secret` char(64) not null,
+  `src` varchar(16) not null,
+  `dst` varchar(16) not null,
+  `text` text null,
+  `first_sent_at` bigint unsigned not null,
+  `last_sent_at` bigint unsigned not null,
+  `num_attempts` int not null default 1,
+  `errors` text null
 );

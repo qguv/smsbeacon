@@ -264,6 +264,18 @@ class Database:
             user_type=UserType.SUBSCRIBED,
             created=now)
 
+    def unsubscribe(self, user_telno, beacon_telno) -> 'uid':
+        now = int(datetime.now().timestamp())
+
+        # delete user if already there
+        self.execute('delete from users where telno = %s and beacon = %s', user_telno, beacon_telno)
+
+        return self.insert_into('users',
+            telno=user_telno,
+            beacon=beacon_telno,
+            user_type=UserType.NOT_SUBSCRIBED,
+            created=now)
+
     def change_alert_type(self, aid, new_alert_type, uid):
         now = int(datetime.now().timestamp())
 
