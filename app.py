@@ -700,6 +700,9 @@ def incoming_sms(locid, secret):
         return
 
     elif user_type == UserType.ADMIN:
+        if text == 'ping':
+            return responses.pong(sender, beacon)
+
         now = int(datetime.now().timestamp())
         get_db().insert_into('alerts',
                 beacon=beacon,

@@ -34,3 +34,6 @@ def blasted_thanks(to, beacon_telno):
 
 def submitted_thanks(to, beacon_telno):
     return xmlgen("We got your report, thanks for submitting.", to, beacon_telno)
+
+def pong(to, beacon_telno):
+    return xmlgen("pong", to, beacon_telno)
