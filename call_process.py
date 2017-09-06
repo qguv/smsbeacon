@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 '''Incredibly ugly hack to call process route regularly. TODO: use SQS instead'''
 
-def handler():
+def handler(*args):
     import requests # external
     import config   # internal
 
