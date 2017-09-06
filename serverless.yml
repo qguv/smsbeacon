@@ -13,6 +13,10 @@ functions:
     events:
       - http: ANY {proxy+}
       - http: ANY /
+  call_process:
+    handler: call_process.handler
+    events:
+      - schedule: rate(1 minute)
 
 custom:
   wsgi:
