@@ -29,9 +29,10 @@ print("Done!\nInitializing beacon root user...", end=' ')
 root_token = random_token()
 db.init_root_user(crypto.hash(root_token))
 
-url = config.public_url
+url = "https://" if config.https else "http://"
+url += config.public_url
 if config.port != 80:
     url += ":{}".format(config.port)
 
 sudo = 'sudo ' if config.port < 1024 else ''
-print("Done!\n\nRoot user initialized. Run the app with:\n  {}python3 app.py\nthen set the root password at:\n  http://{}/root/login/{}".format(sudo, url, root_token))
+print("Done!\n\nRoot user initialized. Run the app with:\n  {}python3 app.py\nthen set the root password at:\n  {}/root/login/{}".format(sudo, url, root_token))
