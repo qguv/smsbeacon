@@ -6,9 +6,9 @@ bugs:
 
 tasks before deploy:
 
+- retry SMS sending when using XML responses too
 - don't show plivo api keys on the page; pull them into the update only if they're nonblank
-- get `process(...)` called: https://stackoverflow.com/questions/41557956/can-you-trigger-an-aws-lambda-on-a-dynamic-timer
-- automatically update plivo application url?
+- can we automatically update plivo application url?
 - serve static files statically
   - favicon
   - landing
@@ -18,10 +18,11 @@ tasks before deploy:
 - soft migration test, old to new
 - DEPLOY AND REPLACE v1
 
-task after deploy:
+tasks after deploy:
 
 - set sls up to provision api gateway, rds, and maaaaybe custom url
   - qa environment and prod environment
 - extensive api documentation
 - more queueing options
+- use SQS rather than process()
 - make web ui halfway decent

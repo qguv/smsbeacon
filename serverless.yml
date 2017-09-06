@@ -3,6 +3,7 @@ service: smsbeacon
 provider:
   name: aws
   runtime: python3.6
+  stage: production
 
 plugins:
   - serverless-wsgi

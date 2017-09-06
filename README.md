@@ -12,12 +12,12 @@ Send a text to a number registered with Plivo, and the beacon will forward it to
 
 - `subscribe`: sign up to get alerts
 - `unsubscribe`: opt out of alerts; you might not get confirmation
-- `unstop`: resubscribe after you've unsubscribed; you might need to send this twice. **If beacon isn't responding after you've unsubscribed, try unstop!**
+- `resume`: resubscribe after you've unsubscribed; you might need to send this twice. **If your beacon isn't responding after you've unsubscribed, try sending resume!**
 - anything else is added to a queue for a short time to allow spam to be vetoed; after that, it will be sent to all subscribers
 
 ## how it works
 
-Each beacon server can support as many beacons as you'd like. There are two ways to get started:
+Each smsbeacon server can support as many beacons as you'd like. There are two ways to get started:
 
 ### jumping onto my beacon server
 
@@ -25,7 +25,10 @@ I ([qguv](https://github.com/qguv)) run a beacon server for community use. If yo
 
 ### spinning up your own manually
 
-- get a [plivo][] account and buy a number; note your plivo id and auth token
+- get some numbers
+  - open a [plivo][] account
+  - create a subaccount for the smsbeacon called, uh, `smsbeacon`
+  - look up that account's API ID and token, note them somewhere
 - set up the database:
   - spin up a mysql instance accessable over the public internet
   - create a new `smsbeacon` database in mysql
@@ -36,25 +39,25 @@ I ([qguv](https://github.com/qguv)) run a beacon server for community use. If yo
 - deploy the code:
   - clone this repository on your dev machine
   - `pip3 install virtualenv`, a dependency of serverless when used with python
-  - `pip3 install -t vendored -r requirements.txt'
-  - modify `config.py` to reflect your database information
-  - change the `change me` fields in `config.py` to long random strings ([random.org][] is okay)
-  - `serverless deploy -s production -v`, note the URL it gives you
-  - set `public_url` to that url
-  - `serverless deploy function -s production -f app -v`
+  - modify `config.py` to reflect your database information, public URL, etc
+  - change the `change me` fields in `config.py` to [long random strings][random]
+  - get a (free) Amazon SSL certificate for your (sub)domain
+  - set up a custom domain in [API Gateway](https://console.aws.amazon.com/apigateway/home?region=us-east-1#/custom-domain-names) for the domain you just SSL'd
+  - with your domain's DNS provider (probably where you bought your domain), set up a CNAME record to the cloudfront URL you're given in API Gateway
+  - `serverless deploy` and you're _done_
 - configure your beacon on the site:
   - run `./init_db.py`, note the URL it gives you
-  - go to the URL given in the previous step and set the root password
+  - go to the URL given in the previous step and set the root password to [something random and fairly long][random]
   - click the link to create a new beacon
   - fill in the information, including the plivo id and auth token from earlier
-  - copy the text it gives you and paste it into the plivo number's connected application field; this is the URL plivo uses to send incoming SMS messages to your beacon
-  - add yourself as an admin and set your own password
+  - copy the url it gives you after you submit and paste it into the message field in the plivo number's connected application; this is the URL plivo uses to send incoming SMS messages to your beacon
+  - **IMPORTANT**: add your phone number as an admin, then follow the texted link to set your password
 - test it:
   - from the admin phone number you entered, text `ping` to the number you registered with plivo; if you've done everything right, you should get `pong` back
   - tell everyone who matters to subscribe
 
 [plivo]: https://plivo.com/
-[random.org]: https://www.random.org/passwords/?num=100&len=32&format=html&rnd=new
+[random]: https://www.random.org/passwords/?num=100&len=24&format=html&rnd=new
 
 ## troubleshooting
 
