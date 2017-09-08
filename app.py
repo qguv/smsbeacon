@@ -316,7 +316,7 @@ def inform_admins_new(text, aid, locid, url_root, exclude=[]):
     if isinstance(exclude, str):
         exclude = [exclude]
 
-    m = "New submission: \"{}\"\nApprove or reject at {}"
+    m = "New submission to the {} beacon: \"{}\"\nApprove or reject at {}"
     for telno, (uid, _, _, _) in get_db().users_of_type(locid, UserType.ADMIN).items():
 
         if telno in exclude:
@@ -324,7 +324,7 @@ def inform_admins_new(text, aid, locid, url_root, exclude=[]):
 
         # TODO: on autologin, go directly to relevant alert id and highlight
         autologin_url = request.url_root.rstrip('/') + url_for('autologin', locid=locid, uid=uid, token=replace_token(uid))
-        send_sms(m.format(text, autologin_url), telno, locid, url_root)
+        send_sms(m.format(locid.upper(), text, autologin_url), telno, locid, url_root)
 
     print("[DEBUG] Admins informed")
 
@@ -352,7 +352,9 @@ def inform_admins_responded(how: AlertType, text, aid, by_whom: 'nickname', loci
 # APP SETUP
 
 @app.context_processor
-def beacon_name():
+def template_context():
+    '''Makes additional objects available to all templates without having to
+    pass them into each.'''
     return dict(
         AlertType=AlertType,
         UserType=UserType,
@@ -495,14 +497,14 @@ def new_alert(locid):
 
     # TODO: combine DB queries
     sender = get_db().user_telno(g.auth['uid'])
-    beacon_telno = get_db().beacon_telno(locid)
+    beacon = get_db().beacon_telno(locid)
 
     # send immediately if the beacon is so configured
     autosend_delay = get_db().beacon_autosend_delay(locid)
     if autosend_delay == 0:
         now = int(datetime.now().timestamp())
         get_db().insert_into('alerts',
-                beacon=beacon_telno,
+                beacon=beacon,
                 telno=sender,
                 text=text,
                 reported_by=sender,
@@ -518,7 +520,7 @@ def new_alert(locid):
             from users
             where beacon = %s
             and telno = %s
-        ''', beacon_telno, sender)
+        ''', beacon, sender)
         if nickname is None:
             nickname = "at {}".format(sender)
 
@@ -529,11 +531,11 @@ def new_alert(locid):
     else:
         now = int(datetime.now().timestamp())
         aid = get_db().insert_into('alerts',
-                beacon=get_db().beacon_telno(locid),
+                beacon=beacon,
                 telno=sender,
                 text=text,
-                reported_by=sender,
                 reported_at=now,
+                reported_by=sender,
                 alert_type=AlertType.REPORT_PENDING)
         inform_admins_new(text, aid, locid, request.url_root, exclude=sender)
         flash("Message queued and other admins notified.")
@@ -723,7 +725,7 @@ def incoming_sms(locid, secret):
             from users
             where beacon = %s
             and telno = %s
-        ''', beacon_telno, sender)
+        ''', beacon, sender)
         if nickname is None:
             nickname = "at {}".format(sender)
 
@@ -739,6 +741,7 @@ def incoming_sms(locid, secret):
                 reported_at=now,
                 reported_by=sender,
                 alert_type=AlertType.REPORT_PENDING)
+        inform_admins_new(text, aid, locid, request.url_root, exclude=sender)
         return responses.submitted_thanks(sender, beacon)
 
 @app.route('/beacons/new', methods=['GET', 'POST'])
