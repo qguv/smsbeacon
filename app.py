@@ -160,47 +160,50 @@ def cookie_auth(allow_uids=utils.all_of_them, allow_user_types=[UserType.ADMIN])
             try:
                 uid = int(request.cookies['u'])
                 token = request.cookies['t']
+
+            # malformed cookies
             except ValueError:
-                print("malformed cookies") #DEBUG
                 return beacon_login
+
+            # user without cookies tried to log in
             except:
-                print("couldn't get cookies") #DEBUG
-                import traceback; traceback.print_exc() #DEBUG
                 return beacon_login
 
             try:
                 token_auth(uid, token)
             except TokenExpired:
-                print("token expired") #DEBUG
                 flash("Session expired, please log in again.")
                 return beacon_login
             except BadToken:
-                print("bad token") #DEBUG
+                print("user {} tried to use incorrect token cookie {} to log in".format(uid, token))
                 return beacon_login
             except NoSuchUser:
-                print("no user with uid from cookie") #DEBUG
+                print("user with cookie set to nonexistent user ID tried to log in")
                 return beacon_login
             except:
-                print("couldn't authorize user") #DEBUG
+                print("token_auth({}, {}): login failure".format(repr(uid), repr(token)))
                 import traceback; traceback.print_exc() #DEBUG
                 return beacon_login
 
             if uid not in allow_uids:
-                print("user not allowed")
+                m = "user {} tried to access {} but was disallowed because only these uids can access it: {}"
+                print(m.format(uid, request.url, ', '.join(str(u) for u in allow_uids)))
                 return beacon_login
 
             if uid != ROOT_UID and get_db().user_locid(uid) != locid:
-                print("logged-in user doesn't belong to this beacon")
+                m = "user {} tried to access {} but was disallowed because they're not in that beacon"
+                print(m.format(uid, request.url))
                 return beacon_login
 
             try:
                 #TODO combine user db calls
                 ut = get_db().user_type(uid)
                 if ut not in allow_user_types:
-                    print("user type not allowed")
+                    m = "user {} tried to access {} but was disallowed because only these user types can access it: {}"
+                    print(m.format(uid, request.url, ', '.join(u.name.lower().replace('_', ' ') for u in allow_user_types)))
                     return beacon_login
             except:
-                print("couldn't get type for user")
+                print("couldn't get type for user {}".format(uid))
                 import traceback; traceback.print_exc() #DEBUG
                 return beacon_login
 
@@ -697,7 +700,7 @@ def incoming_sms(locid, secret):
 
     elif text.lower() in ['stop', 'end', 'quit', 'cancel', 'unsubscribe', 'unsub', 'stop all']:
         get_db().unsubscribe(sender, beacon)
-        return
+        return 'OK'
 
     elif user_type == UserType.ADMIN:
         if text == 'ping':
