@@ -134,7 +134,7 @@ class Database:
         sql = '''select u.id
                  from users u inner join beacons b
                  on u.beacon = b.telno
-                 where b.locid=%s and u.telno=%s'''
+                 where b.locid = %s and u.telno = %s'''
 
         return self.fetchone(sql, locid, telno)[0]
 
@@ -191,11 +191,11 @@ class Database:
         return d
 
     def delete_user(self, uid):
-        try:
-            sql = '''delete from users where uid = %s'''
-            return bool(self.execute(sql, uid))
-        except:
-            return False
+        sql = '''delete from users where id = %s'''
+
+        # need at least one result
+        if not self.execute(sql, uid):
+            raise Exception
 
     def beacon_nickname(self, locid) -> str:
         sql = '''select nickname

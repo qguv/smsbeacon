@@ -113,18 +113,14 @@ function patch_user(url, user_type, nickname) {
     fd.append('csrf_token', '{{ csrf_token() }}');
 
     {# if we're promoting people, we need their names #}
-    if (arguments.length === 3 && nickname.length > 0) {
-        fd.append('nickname', nickname);
-    } else if (user_type === {{ UserType.ADMIN }}) {
-        nickname = '';
+    if (user_type === {{ UserType.ADMIN }}) {
         while (typeof(nickname) !== 'string' || nickname.length === 0) {
             nickname = prompt("Please give this new admin a name:");
         }
         fd.append('nickname', nickname);
-    }
 
     {# if we're banning people, we need a reason #}
-    else if ([{{ UserType.BANNED_WASNT_SUBSCRIBED }}, {{ UserType.BANNED_WAS_SUBSCRIBED }}].includes(user_type)) {
+    } else if ([{{ UserType.BANNED_WASNT_SUBSCRIBED }}, {{ UserType.BANNED_WAS_SUBSCRIBED }}].includes(user_type)) {
         let ban_reason = '';
         while (typeof(ban_reason) !== 'string' || ban_reason.length === 0) {
             ban_reason = prompt("Please give a reason for this ban:")

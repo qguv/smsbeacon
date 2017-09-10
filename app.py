@@ -681,7 +681,9 @@ def incoming_sms(locid, secret):
 
     try:
         user_type = get_db().user_type_by_telno(sender)
-    except:
+    except Exception as e:
+        print("[DEBUG]", e)
+        import traceback; traceback.print_exc() #DEBUG
         user_type = UserType.NOT_SUBSCRIBED
 
     print("[DEBUG] from {} ({}):".format(sender, user_type.name.lower().replace('_', ' ')))
@@ -921,7 +923,6 @@ def post_user(locid):
         beacon = get_db().beacon_telno(locid)
         now=int(datetime.now().timestamp())
 
-        model = form.into_db()
         model['created'] = now
         model['beacon'] = beacon
 
