@@ -38,19 +38,19 @@
 
     {% for telno, (uid, user_type, nickname, ban_reason, admin_status) in users.items() %}
         <li>
-            {%- if nickname -%}
+            {% if nickname %}
                 {{ nickname }} at
-            {%- endif -%}
+            {% endif %}
             {{ telno }}
 
             {#- TODO: mark this on UserType once queueing works -#}
-            {%- if admin_status -%}
+            {% if admin_status %}
                 ({{ admin_status }})
-            {%- endif -%}
+            {% endif %}
 
-            {%- if ban_reason -%}
+            {% if ban_reason %}
                 <br />Ban reason: {{ ban_reason }}
-            {%- endif -%}
+            {% endif %}
         </li>
         {% if uid != g.auth['uid'] %}
             <ul>
@@ -93,9 +93,11 @@
                 </li>
                     {#- TODO: mark this on UserType once queueing works -#}
                     {% if admin_status %}
-                        <button onclick="patch_user('{{ url_for('patch_user', locid=locid, uid=uid) }}', {{ UserType.ADMIN }})">
+                    <li>
+                        <button onclick="patch_user('{{ url_for('patch_user', locid=locid, uid=uid) }}', {{ UserType.ADMIN }}, '{{ nickname }}')">
                             Re-invite
                         </button>
+                    </li>
                     {% endif %}
                 {% endif %}
 
@@ -105,14 +107,16 @@
 </ul>
 
 <script>
-function patch_user(url, user_type) {
+function patch_user(url, user_type, nickname) {
     const fd = new FormData();
     fd.append('user_type', user_type);
     fd.append('csrf_token', '{{ csrf_token() }}');
 
     {# if we're promoting people, we need their names #}
-    if (user_type === {{ UserType.ADMIN }}) {
-        let nickname = '';
+    if (arguments.length === 3 && nickname.length > 0) {
+        fd.append('nickname', nickname);
+    } else if (user_type === {{ UserType.ADMIN }}) {
+        nickname = '';
         while (typeof(nickname) !== 'string' || nickname.length === 0) {
             nickname = prompt("Please give this new admin a name:");
         }

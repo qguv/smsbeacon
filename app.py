@@ -61,16 +61,12 @@ def replace_token(uid, expires=True) -> 'token':
     wheres = dict(id = uid)
     updates = dict(thash=crypto.hash(token))
 
-    if expires:
-        if uid == ROOT_UID:
-            token_lifetime = config.root_token_lifetime
-        else:
-            token_lifetime = get_db().user_token_lifetime(uid)
-
-        updates['token_expires'] = int(datetime.now().timestamp()) + token_lifetime
-
+    if uid == ROOT_UID:
+        token_lifetime = config.root_token_lifetime
     else:
-        updates['token_expires'] = None
+        token_lifetime = get_db().user_token_lifetime(uid)
+
+    updates['token_expires'] = int(datetime.now().timestamp()) + token_lifetime
 
     get_db().update('users', updates, wheres)
     return token
@@ -879,7 +875,7 @@ def patch_user(locid, uid):
 
     try:
         if new_user_type == UserType.ADMIN:
-            token = replace_token(uid, expires=False)
+            token = replace_token(uid)
             url = url_for('autologin', uid=uid, locid=locid, token=token)
             send_sms("You're now an admin on the {} beacon. Click to log in: {}".format(locid, request.url_root.rstrip('/') + url),
                      get_db().user_telno(uid),
