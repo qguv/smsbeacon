@@ -334,20 +334,22 @@ def inform_admins_responded(how: AlertType, text, aid, by_whom: 'nickname', loci
     if isinstance(exclude, str):
         exclude = [exclude]
 
-    # TODO: on autologin, go directly to relevant alert id and highlight
-    m = "{} {} a message{}: \"{}\""
-
-    if how == AlertType.REPORT_RELAYED:
-        verb = 'approved'
-        clause = " which is now being relayed"
-    elif how == AlertType.REPORT_REJECTED:
-        verb = 'rejected'
-        clause = ''
+    if how == AlertType.REPORT_RELAYED and by_whom is None:
+        msg = "Automatically blasting out message that nobody responded to: \"{}\"".format(text)
     else:
-        verb = 'modified'
-        clause = " to the state {}".format(how.name.lower())
+        if how == AlertType.REPORT_RELAYED:
+            verb = 'approved'
+            clause = " which is now being relayed"
+        elif how == AlertType.REPORT_REJECTED:
+            verb = 'rejected'
+            clause = ''
+        else:
+            verb = 'modified'
+            clause = " to the \"{}\" state".format(how.name.lower().replace('_', ' '))
 
-    blast(m.format(by_whom, verb, clause, text), locid, [UserType.ADMIN], url_root, exclude=exclude)
+        msg = "{} {} a message{}: \"{}\"".format(by_whom, verb, clause, text)
+
+    blast(msg, locid, [UserType.ADMIN], url_root, exclude=exclude)
 
 # APP SETUP
 
@@ -619,7 +621,6 @@ def process(secret):
     if secret != config.processing_key:
         return forbidden()
 
-    response = ''
     now = int(datetime.now().timestamp())
 
     # fire off messages that were put in the queue and timed out
@@ -633,12 +634,12 @@ def process(secret):
     '''.format(AlertType.REPORT_PENDING, now)
 
     stale = get_db().fetchall(sql)
-    queue_msg = "[DEBUG] {} reports timed out and were sent".format(len(stale))
+    print("[DEBUG] {} reports timed out and were sent".format(len(stale)))
 
     for locid, text, sender, alert in stale:
         get_db().update('alerts', {'alert_type': AlertType.REPORT_RELAYED, 'acted_at': now}, {'id': alert})
         blast(text, locid, [UserType.SUBSCRIBED], request.url_root, exclude=sender)
-        inform_admins_sent(text, alert, "timing out", locid, request.url_root)
+        inform_admins_responded(AlertType.REPORT_RELAYED, text, None, locid, request.url_root)
         send_sms("Your report was sent out, thanks for submitting.", sender, locid, request.url_root)
 
     now = int(datetime.now().timestamp())
@@ -656,9 +657,9 @@ def process(secret):
     '''.format(','.join(str(at) for at in prunable), now)
 
     pruned = get_db().execute(sql)
-    prune_msg = "[DEBUG] {} old reports were pruned".format(pruned)
+    print("[DEBUG] {} old reports were pruned".format(pruned))
 
-    return "<p>" + "<br />".join([queue_msg, prune_msg]) + "</p>"
+    return "OK"
 
 @app.route('/<locid>/sms/<secret>', methods=['GET', 'POST'])
 @csrfp.exempt

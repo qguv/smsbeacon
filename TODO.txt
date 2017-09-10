@@ -1,28 +1,26 @@
 bugs:
 
-- admin reporting over SMS causes undelivered(?) messages (500 on callback?)
-- **untested fix in:** admins don't get texted when other admins directly blast
 - callbacks have 400 errors and don't send error codes but appear to work anyway??!
 
 tasks before deploy:
 
-- retry SMS sending when using XML responses too
+- retry SMS sending when using XML responses too; unify XML responses and API calls
+- don't show subscriber list on the page; bans happen only through submitted reports or manually
 - don't show plivo api keys on the page; pull them into the update only if they're nonblank
-- can we automatically update plivo application url?
-- serve static files statically
-  - favicon
-  - landing
-  - and then do all of this through sls
-- use RDS database
-- user testing at hackrva
 - soft migration test, old to new
 - DEPLOY AND REPLACE v1
 
 tasks after deploy:
 
+- can we automatically update plivo application url?
+- serve static files statically
+  - favicon
+  - landing
+  - and then do all of this through sls / gateway
+- use SQS rather than process()
+- admin_pending_was_subscribed and admin_pending_wasnt_subscribed UserTypes
 - set sls up to provision api gateway, rds, and maaaaybe custom url
   - qa environment and prod environment
-- extensive api documentation
+- extensive documentation
 - more queueing options
-- use SQS rather than process()
 - make web ui halfway decent
