@@ -36,20 +36,22 @@
 
 <ul>
 
-    {% for telno, (uid, user_type, nickname, ban_reason) in users.items() %}
-        {% if nickname %}
-            {% if ban_reason %}
-                <li>{{ nickname }} ({{ telno }})<br />Ban reason: {{ ban_reason }}</li>
-            {% else %}
-                <li>{{ nickname }} ({{ telno }})</li>
-            {% endif %}
-        {% else %}
-            {% if ban_reason %}
-                <li>{{ telno }}<br />Ban reason: {{ ban_reason }}</li>
-            {% else %}
-                <li>{{ telno }}</li>
-            {% endif %}
-        {% endif %}
+    {% for telno, (uid, user_type, nickname, ban_reason, admin_status) in users.items() %}
+        <li>
+            {%- if nickname -%}
+                {{ nickname }} at
+            {%- endif -%}
+            {{ telno }}
+
+            {#- TODO: mark this on UserType once queueing works -#}
+            {%- if admin_status -%}
+                ({{ admin_status }})
+            {%- endif -%}
+
+            {%- if ban_reason -%}
+                <br />Ban reason: {{ ban_reason }}
+            {%- endif -%}
+        </li>
         {% if uid != g.auth['uid'] %}
             <ul>
 
@@ -89,6 +91,12 @@
                         Demote to subscriber
                     </button>
                 </li>
+                    {#- TODO: mark this on UserType once queueing works -#}
+                    {% if admin_status %}
+                        <button onclick="patch_user('{{ url_for('patch_user', locid=locid, uid=uid) }}', {{ UserType.ADMIN }})">
+                            Re-invite
+                        </button>
+                    {% endif %}
                 {% endif %}
 
             </ul>

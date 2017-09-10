@@ -168,15 +168,27 @@ class Database:
 
         return UserType(self.fetchone(sql, telno)[0])
 
-    def users_of_type(self, locid, *user_types) -> {"telno": ('id', 'user_type', 'nickname', 'ban_reason')} or None:
-        sql = '''select u.telno, u.id, u.user_type, u.nickname, u.ban_reason
+    def users_of_type(self, locid, *user_types) -> {"telno": ('id', 'user_type', 'nickname', 'ban_reason', 'has_password')} or None:
+        sql = '''select u.telno, u.id, u.user_type, u.nickname, u.ban_reason, u.phash, u.token_expires
                  from users u inner join beacons b
                  on u.beacon = b.telno
                  where b.locid = %s
                  and u.user_type in ({})
         '''.format(','.join(str(ut) for ut in user_types))
+        all_users = self.fetchall(sql, locid)
 
-        return { t[0]: t[1:] for t in self.fetchall(sql, locid) }
+        d = {}
+        now = int(datetime.now().timestamp())
+        for telno, uid, user_type, nickname, ban_reason, phash, token_expires in all_users:
+
+            # detect admins who haven't registered in time
+            # TODO: mark this on UserType once queueing works
+            admin_status = None
+            if user_type == UserType.ADMIN and not phash:
+                admin_status = "invitation expired" if token_expires <= now else "hasn't responded"
+            d[telno] = (uid, user_type, nickname, ban_reason, admin_status)
+
+        return d
 
     def delete_user(self, uid):
         try:
