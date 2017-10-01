@@ -29,8 +29,8 @@
 <nav>
     <ul>
         <li>{{ beacon_nickname(locid) }} {{ locid }}</li>
-        {% for page in 'alerts, subscribers, admins, bans, settings'.split(', ') %}
-            <li><a href="{{ url_for(page, locid=locid) }}">{{ page | capitalize }}</a></li>
+        {% for page in 'alerts, subscribers, admins, bans, bulk_subscribe, settings'.split(', ') %}
+            <li><a href="{{ url_for(page, locid=locid) }}">{{ page | replace('_', ' ') | capitalize }}</a></li>
         {% endfor %}
         <li><a href="javascript:void(0)" onclick="change_password(prompt('New password'))">Change password</a></li>
         <li><a href="{{ url_for('logout', locid=locid) }}">Log out</a></li>

@@ -186,6 +186,8 @@ def cookie_auth(allow_uids=utils.all_of_them, allow_user_types=[UserType.ADMIN])
                 print(m.format(uid, request.url, ', '.join(str(u) for u in allow_uids)))
                 return beacon_login
 
+            # is a user of this beacon?
+            #TODO restructure auth so that this is implicit
             if uid != ROOT_UID and get_db().user_locid(uid) != locid:
                 m = "user {} tried to access {} but was disallowed because they're not in that beacon"
                 print(m.format(uid, request.url))
@@ -953,6 +955,33 @@ def post_user(locid):
             flash("{} {}".format(getattr(form, field).label.text, error), 'validation')
 
     return back
+
+@app.route('/<locid>/users/bulk-subscribe', methods=['GET', 'POST'])
+@cookie_auth()
+def bulk_subscribe(locid):
+    locid = locid.lower()
+
+    if request.method == 'GET':
+        return render_template('bulk_subscribe.html', locid=locid)
+
+    try:
+        telnos = [ utils.normal_telno(telno) for telno in request.form['telnos'].strip().split() ]
+    except Exception as e:
+        import traceback; print("[ERROR] ", e, traceback.format_exc(), sep='\n', end='\n\n') #DEBUG
+        return bad_request()
+
+    beacon = get_db().beacon_telno(locid)
+
+    #TODO make this a bulk insert
+    for telno in telnos:
+        get_db().insert_into('users',
+            beacon=beacon,
+            telno=telno,
+            user_type=UserType.SUBSCRIBED,
+            created=int(datetime.now().timestamp()))
+
+    flash("{} subscribers added".format(len(telnos)))
+    return redirect(url_for('subscribers', locid=locid))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=config.port, debug=(config.public_url == 'localhost'))
