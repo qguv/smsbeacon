@@ -315,7 +315,7 @@ def inform_admins_new(text, aid, locid, url_root, exclude=[]):
         exclude = [exclude]
 
     m = "New submission to the {} beacon: \"{}\"\nApprove or reject at {}"
-    for telno, (uid, _, _, _) in get_db().users_of_type(locid, UserType.ADMIN).items():
+    for telno, (uid, _, _, _, _) in get_db().users_of_type(locid, UserType.ADMIN).items():
 
         if telno in exclude:
             continue
